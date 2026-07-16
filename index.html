@@ -107,6 +107,7 @@
     <header>
       <div class="logo">💧</div>
       <h1>Painel de Coletas — PISF</h1>
+      <a class="btn ghost small hidden" id="adminLink" href="/admin.html">🛡️ Admin</a>
       <span class="who" id="whoami"></span>
       <button class="btn ghost small" id="logoutBtn">Sair</button>
     </header>
@@ -164,7 +165,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, collection, onSnapshot, getDocs, query, orderBy }
+    import { getFirestore, collection, onSnapshot, getDocs, query, orderBy, doc, getDoc }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     // ====================================================================
@@ -216,6 +217,12 @@
         $("login").classList.add("hidden");
         $("app").classList.remove("hidden");
         $("whoami").textContent = user.email || "";
+        // Mostra o link "Admin" só para gestores.
+        try {
+          const g = await getDoc(doc(db, "equipe", (user.email || "").toLowerCase()));
+          $("adminLink").classList.toggle("hidden",
+            !(g.exists() && g.data().gestor === true));
+        } catch (_) {}
         await loadUserEmails();
         subscribe();
       } else {

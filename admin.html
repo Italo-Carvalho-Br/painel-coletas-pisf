@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Administração — Painel PISF</title>
+  <style>
+    :root {
+      --green:#2E9E5B; --green-dark:#1F7A44; --blue:#2478B5;
+      --bg:#F6FBF7; --surface:#fff; --border:#DDE6DF;
+      --text:#1D2B22; --text2:#6B7B72; --hint:#9AA8A0;
+      --warning:#E0A400; --error:#D64545;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:'Segoe UI',system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    button{font-family:inherit;cursor:pointer}
+    .hidden{display:none!important}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+    /* login */
+    #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    #login .card{width:100%;max-width:380px;padding:32px}
+    #login h1{font-size:22px;text-align:center;margin:0 0 4px}
+    #login p.sub{text-align:center;color:var(--text2);margin:0 0 24px;font-size:13px}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    .field input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:12px;font-size:14px;outline:none}
+    .field input:focus{border-color:var(--green)}
+    .btn{background:var(--green);color:#fff;border:0;border-radius:12px;padding:12px 18px;font-size:14px;font-weight:600}
+    .btn:hover{background:var(--green-dark)}
+    .btn.small{padding:8px 12px;font-size:13px}
+    .btn.ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+    .btn.danger{background:transparent;color:var(--error);border:1px solid var(--border)}
+    .btn.block{width:100%}
+    .msg{font-size:13px;margin-top:12px;text-align:center;min-height:18px}
+    .msg.err{color:var(--error)}
+    /* app */
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5}
+    header .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--green));display:grid;place-items:center;color:#fff;font-size:18px}
+    header h1{font-size:16px;margin:0;flex:1}
+    header .who{font-size:12px;color:var(--text2)}
+    main{max-width:1000px;margin:0 auto;padding:20px}
+    .panel{padding:18px}
+    .panel h2{font-size:15px;margin:0 0 4px}
+    .panel p.hint{font-size:12.5px;color:var(--text2);margin:0 0 16px}
+    .addrow{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:18px}
+    .addrow .field{margin:0}
+    .addrow input{padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;outline:none}
+    table{border-collapse:collapse;width:100%;font-size:13px}
+    th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border)}
+    th{background:#F2F6F3;font-weight:700;font-size:12px}
+    td.center,th.center{text-align:center}
+    .name{font-weight:600}
+    .email{color:var(--text2);font-size:12px}
+    .sw{position:relative;display:inline-block;width:42px;height:24px}
+    .sw input{opacity:0;width:0;height:0}
+    .sl{position:absolute;inset:0;background:#cfd8d2;border-radius:24px;transition:.2s;cursor:pointer}
+    .sl:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+    .sw input:checked + .sl{background:var(--green)}
+    .sw input:checked + .sl:before{transform:translateX(18px)}
+    .badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(46,158,91,.12);color:var(--green-dark)}
+    .empty{text-align:center;color:var(--hint);padding:30px}
+    .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none}
+    .toast.show{opacity:1}
+  </style>
+</head>
+<body>
+
+  <section id="login">
+    <div class="card">
+      <div style="text-align:center;font-size:32px">🛡️</div>
+      <h1>Administração</h1>
+      <p class="sub">Gestão de acessos — Painel PISF</p>
+      <form id="loginForm">
+        <div class="field"><label>E-mail do gestor</label><input id="email" type="email" required /></div>
+        <div class="field"><label>Senha</label><input id="password" type="password" required /></div>
+        <button class="btn block" type="submit" id="loginBtn">Entrar</button>
+        <div class="msg" id="loginMsg"></div>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" class="hidden">
+    <header>
+      <div class="logo">🛡️</div>
+      <h1>Administração de Acessos</h1>
+      <a class="btn ghost small" href="/index.html">Ver Painel</a>
+      <span class="who" id="whoami"></span>
+      <button class="btn ghost small" id="logoutBtn">Sair</button>
+    </header>
+    <main>
+      <!-- Sem permissão de gestor -->
+      <div id="noAccess" class="panel card hidden">
+        <h2>Acesso restrito</h2>
+        <p class="hint">Sua conta não tem permissão de <b>gestor</b>. Peça a um gestor para habilitar,
+          ou crie o primeiro gestor no Console do Firebase (coleção <code>equipe</code>, campo
+          <code>gestor: true</code>).</p>
+      </div>
+
+      <!-- Área de gestor -->
+      <div id="manager" class="hidden">
+        <div class="panel card">
+          <h2>Equipe e acessos</h2>
+          <p class="hint">Ative/desative com um clique. <b>Painel</b> = ver as coletas. <b>Download</b> = baixar o app no hub.
+            <b>Gestor</b> = pode administrar esta lista. As alterações valem na hora.</p>
+
+          <div class="addrow">
+            <div class="field"><label>Nome</label><br/><input id="novoNome" type="text" placeholder="Nome da pessoa" /></div>
+            <div class="field"><label>E-mail (login)</label><br/><input id="novoEmail" type="email" placeholder="pessoa@empresa.com" style="min-width:240px" /></div>
+            <button class="btn small" id="addBtn">+ Adicionar pessoa</button>
+          </div>
+
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr>
+                <th>Pessoa</th>
+                <th class="center">Painel</th>
+                <th class="center">Download</th>
+                <th class="center">Gestor</th>
+                <th class="center">—</th>
+              </tr></thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div class="empty hidden" id="emptyState">Nenhuma pessoa cadastrada ainda. Adicione acima.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdhJznaxrK-BtKNP-i7tox2UNG480i4BE",
+      authDomain: "portal-do-tecnico-d9270.firebaseapp.com",
+      projectId: "portal-do-tecnico-d9270",
+      storageBucket: "portal-do-tecnico-d9270.firebasestorage.app",
+      messagingSenderId: "177928686817",
+      appId: "1:177928686817:web:a4667dfb5989b5e7ce3ba0"
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const $ = (id) => document.getElementById(id);
+
+    const emailKey = (e) => e.trim().toLowerCase();
+    let unsub = null;
+
+    function toast(msg) {
+      const t = $("toast"); t.textContent = msg; t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2200);
+    }
+
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("loginMsg").textContent = ""; $("loginBtn").disabled = true;
+      try {
+        await signInWithEmailAndPassword(auth, emailKey($("email").value), $("password").value);
+      } catch (err) {
+        $("loginMsg").className = "msg err";
+        $("loginMsg").textContent = mapErr(err.code);
+      } finally { $("loginBtn").disabled = false; }
+    });
+    $("logoutBtn").addEventListener("click", () => signOut(auth));
+
+    function mapErr(code) {
+      switch (code) {
+        case "auth/invalid-email": return "E-mail inválido.";
+        case "auth/user-not-found":
+        case "auth/wrong-password":
+        case "auth/invalid-credential": return "E-mail ou senha incorretos.";
+        case "auth/too-many-requests": return "Muitas tentativas. Tente mais tarde.";
+        default: return "Não foi possível entrar. (" + code + ")";
+      }
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        if (unsub) { unsub(); unsub = null; }
+        $("app").classList.add("hidden"); $("login").classList.remove("hidden");
+        $("password").value = "";
+        return;
+      }
+      $("login").classList.add("hidden"); $("app").classList.remove("hidden");
+      $("whoami").textContent = user.email || "";
+
+      // Verifica se é gestor (lê o próprio doc em /equipe/{email})
+      let ehGestor = false;
+      try {
+        const snap = await getDoc(doc(db, "equipe", emailKey(user.email)));
+        ehGestor = snap.exists() && snap.data().gestor === true;
+      } catch (_) {}
+
+      if (!ehGestor) {
+        $("noAccess").classList.remove("hidden");
+        $("manager").classList.add("hidden");
+        return;
+      }
+      $("noAccess").classList.add("hidden");
+      $("manager").classList.remove("hidden");
+      subscribe();
+    });
+
+    function subscribe() {
+      unsub = onSnapshot(collection(db, "equipe"), (snap) => {
+        const pessoas = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.nome || a.email || a.id).localeCompare(b.nome || b.email || b.id));
+        render(pessoas);
+      }, (err) => toast("Erro ao ler a equipe: " + err.message));
+    }
+
+    function render(pessoas) {
+      const tb = $("tbody");
+      $("emptyState").classList.toggle("hidden", pessoas.length > 0);
+      tb.innerHTML = pessoas.map(p => {
+        const id = p.id;
+        return `<tr>
+          <td><div class="name">${esc(p.nome || "—")}</div><div class="email">${esc(p.email || id)}</div></td>
+          <td class="center">${sw(id, "acesso_painel", p.acesso_painel)}</td>
+          <td class="center">${sw(id, "acesso_download", p.acesso_download)}</td>
+          <td class="center">${sw(id, "gestor", p.gestor)}</td>
+          <td class="center"><button class="btn danger small" data-del="${esc(id)}">Remover</button></td>
+        </tr>`;
+      }).join("");
+
+      tb.querySelectorAll("input[data-id]").forEach(inp => {
+        inp.addEventListener("change", async () => {
+          try {
+            await updateDoc(doc(db, "equipe", inp.dataset.id), { [inp.dataset.campo]: inp.checked });
+            toast("Acesso atualizado.");
+          } catch (e) { toast("Erro: " + e.message); inp.checked = !inp.checked; }
+        });
+      });
+      tb.querySelectorAll("button[data-del]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Remover " + btn.dataset.del + " da equipe?")) return;
+          try { await deleteDoc(doc(db, "equipe", btn.dataset.del)); toast("Removido."); }
+          catch (e) { toast("Erro: " + e.message); }
+        });
+      });
+    }
+
+    const sw = (id, campo, val) =>
+      `<label class="sw"><input type="checkbox" data-id="${esc(id)}" data-campo="${campo}" ${val ? "checked" : ""}/><span class="sl"></span></label>`;
+    const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    $("addBtn").addEventListener("click", async () => {
+      const nome = $("novoNome").value.trim();
+      const email = emailKey($("novoEmail").value);
+      if (!email || !email.includes("@")) { toast("Informe um e-mail válido."); return; }
+      try {
+        await setDoc(doc(db, "equipe", email), {
+          nome: nome || email, email,
+          acesso_painel: false, acesso_download: false, gestor: false
+        }, { merge: true });
+        $("novoNome").value = ""; $("novoEmail").value = "";
+        toast("Pessoa adicionada.");
+      } catch (e) { toast("Erro ao adicionar: " + e.message); }
+    });
+  </script>
+</body>
+</html>
