@@ -1,0 +1,47 @@
+========================================================================
+ PAINEL WEB DE COLETAS — PISF  (dashboard para coordenadores)
+========================================================================
+
+O QUE É
+  Uma página web onde coordenadores fazem login (Firebase Auth) e veem
+  TODAS as coletas ao vivo: KPIs, filtros, gráfico, tabela e exportação
+  para Excel. Lê os mesmos dados do Firestore que o app dos técnicos.
+
+  A chave de administrador (serviceAccountKey) NÃO é usada aqui — o
+  painel usa login de coordenador + regras do Firestore. Seguro para web.
+
+------------------------------------------------------------------------
+CONFIGURAÇÃO (uma vez) — 4 passos no Firebase + o deploy
+------------------------------------------------------------------------
+
+PASSO 1 — Registrar um app "Web" no Firebase (para obter a config)
+  Console do Firebase > Configurações do projeto (engrenagem) >
+  "Seus apps" > adicionar app > ícone Web </> > apelido "Painel Web" >
+  Registrar. Copie o objeto firebaseConfig mostrado (apiKey e appId).
+  Cole esses valores em index.html (bloco firebaseConfig, "COLE_AQUI").
+
+PASSO 2 — Definir quem é coordenador (admin)
+  a) Console > Authentication > Users: copie o UID do coordenador
+     (crie o usuário antes, se necessário).
+  b) Console > Firestore Database > iniciar coleção "admins" >
+     ID do documento = o UID copiado > adicione um campo qualquer
+     (ex.: email = "coordenador@empresa.com") > Salvar.
+  (Repita para cada coordenador que terá acesso ao painel.)
+
+PASSO 3 — Publicar as regras de segurança
+  Console > Firestore Database > aba "Regras" > cole o conteúdo de
+  portal_do_tecnico/firestore.rules > Publicar.
+
+PASSO 4 — Autorizar o domínio no Firebase Auth
+  Console > Authentication > Settings > Authorized domains >
+  adicione o domínio onde o painel ficará (ex.: painel.ambientalhub.com.br).
+
+Depois disso, acesse o endereço do painel, entre com o e-mail/senha do
+coordenador e pronto.
+
+------------------------------------------------------------------------
+ARQUIVOS
+------------------------------------------------------------------------
+  index.html   -> o painel inteiro (autocontido)
+  LEIA-ME.txt  -> este guia
+========================================================================

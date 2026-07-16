@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel de Coletas — PISF</title>
+
+  <!-- Bibliotecas externas (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --green: #2E9E5B; --green-dark: #1F7A44; --blue: #2478B5;
+      --bg: #F6FBF7; --surface: #ffffff; --border: #DDE6DF;
+      --text: #1D2B22; --text2: #6B7B72; --hint: #9AA8A0;
+      --warning: #E0A400; --error: #D64545;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+      background: var(--bg); color: var(--text); }
+    button { font-family: inherit; cursor: pointer; }
+    .hidden { display: none !important; }
+
+    /* ---- Login ---- */
+    #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+    #login .card { width: 100%; max-width: 380px; padding: 32px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+    #login h1 { font-size: 22px; text-align: center; margin: 0 0 4px; }
+    #login p.sub { text-align: center; color: var(--text2); margin: 0 0 24px; font-size: 13px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .field input { width: 100%; padding: 12px 14px; border: 1px solid var(--border);
+      border-radius: 12px; font-size: 14px; outline: none; }
+    .field input:focus { border-color: var(--green); }
+    .btn { background: var(--green); color: #fff; border: 0; border-radius: 12px;
+      padding: 13px 18px; font-size: 15px; font-weight: 600; width: 100%; }
+    .btn:hover { background: var(--green-dark); }
+    .btn.small { width: auto; padding: 9px 14px; font-size: 13px; }
+    .btn.ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+    .msg { font-size: 13px; margin-top: 12px; text-align: center; min-height: 18px; }
+    .msg.err { color: var(--error); }
+
+    /* ---- App ---- */
+    header { background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 5; }
+    header .logo { width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg, var(--blue), var(--green)); display: grid; place-items: center; color: #fff; font-size: 18px; }
+    header h1 { font-size: 16px; margin: 0; flex: 1; }
+    header .who { font-size: 12px; color: var(--text2); }
+    main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { padding: 14px 16px; }
+    .kpi .n { font-size: 26px; font-weight: 800; color: var(--green-dark); }
+    .kpi .l { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 14px 16px; margin-bottom: 16px; }
+    .toolbar .field { margin: 0; }
+    .toolbar label { font-size: 11px; color: var(--text2); }
+    .toolbar select, .toolbar input { padding: 8px 10px; border: 1px solid var(--border);
+      border-radius: 9px; font-size: 13px; outline: none; background: #fff; }
+    .toolbar .spacer { flex: 1; }
+
+    .grid2 { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (min-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    .panel { padding: 16px; }
+    .panel h2 { font-size: 14px; margin: 0 0 12px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { background: #F2F6F3; font-weight: 700; position: sticky; top: 0; }
+    tbody tr:hover { background: #FAFDFB; }
+    .badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge.ok { background: rgba(46,158,91,.12); color: var(--green-dark); }
+    .badge.pend { background: rgba(224,164,0,.14); color: #8a6400; }
+    .empty { text-align: center; color: var(--hint); padding: 40px; }
+    .count { font-size: 12px; color: var(--text2); }
+  </style>
+</head>
+<body>
+
+  <!-- ================= LOGIN ================= -->
+  <section id="login">
+    <div class="card">
+      <div style="text-align:center;font-size:34px">💧🔎</div>
+      <h1>Painel de Coletas</h1>
+      <p class="sub">Projeto São Francisco — PISF</p>
+      <form id="loginForm">
+        <div class="field">
+          <label>E-mail do coordenador</label>
+          <input id="email" type="email" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label>Senha</label>
+          <input id="password" type="password" autocomplete="current-password" required />
+        </div>
+        <button class="btn" type="submit" id="loginBtn">Entrar</button>
+        <div class="msg" id="loginMsg"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ================= APP ================= -->
+  <div id="app" class="hidden">
+    <header>
+      <div class="logo">💧</div>
+      <h1>Painel de Coletas — PISF</h1>
+      <span class="who" id="whoami"></span>
+      <button class="btn ghost small" id="logoutBtn">Sair</button>
+    </header>
+
+    <main>
+      <div class="kpis">
+        <div class="kpi card"><div class="n" id="kTotal">0</div><div class="l">Total de coletas</div></div>
+        <div class="kpi card"><div class="n" id="kHoje">0</div><div class="l">Hoje</div></div>
+        <div class="kpi card"><div class="n" id="kSemana">0</div><div class="l">Últimos 7 dias</div></div>
+        <div class="kpi card"><div class="n" id="kPontos">0</div><div class="l">Pontos distintos</div></div>
+        <div class="kpi card"><div class="n" id="kTecnicos">0</div><div class="l">Técnicos</div></div>
+      </div>
+
+      <div class="toolbar card">
+        <div class="field"><label>Ponto</label><br/><select id="fPonto"><option value="">Todos</option></select></div>
+        <div class="field"><label>Técnico</label><br/><select id="fTecnico"><option value="">Todos</option></select></div>
+        <div class="field"><label>De</label><br/><input id="fDe" type="date" /></div>
+        <div class="field"><label>Até</label><br/><input id="fAte" type="date" /></div>
+        <div class="field"><label>Status</label><br/>
+          <select id="fStatus"><option value="">Todos</option><option value="1">Sincronizado</option><option value="0">Pendente</option></select>
+        </div>
+        <div class="field"><label>Busca</label><br/><input id="fBusca" type="text" placeholder="ponto ou e-mail…" /></div>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="clearBtn">Limpar</button>
+        <button class="btn small" id="exportBtn">⬇ Exportar Excel</button>
+      </div>
+
+      <div class="grid2">
+        <div class="panel card">
+          <h2>Coletas por dia (últimos 14 dias)</h2>
+          <canvas id="chart" height="90"></canvas>
+        </div>
+      </div>
+
+      <div class="panel card">
+        <h2>Coletas <span class="count" id="tableCount"></span></h2>
+        <div class="table-wrap">
+          <table id="tbl">
+            <thead><tr>
+              <th>Data/Hora</th><th>Ponto</th><th>Técnico</th>
+              <th>pH</th><th>Prof (m)</th><th>Temp (°C)</th><th>Cond (µS/cm)</th>
+              <th>Turb (NTU)</th><th>OD (mg/L)</th><th>Sal (%)</th><th>SDT (mg/L)</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty hidden" id="emptyState">Nenhuma coleta encontrada com os filtros atuais.</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= LÓGICA ================= -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, getDocs, query, orderBy }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // ====================================================================
+    // 1) CONFIGURAÇÃO DO FIREBASE (WEB)  ***  PREENCHA AQUI  ***
+    //    Console do Firebase > Configurações do projeto > Seus apps >
+    //    adicione um app "Web" (</>) e cole o firebaseConfig gerado.
+    // ====================================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdhJznaxrK-BtKNP-i7tox2UNG480i4BE",
+      authDomain: "portal-do-tecnico-d9270.firebaseapp.com",
+      projectId: "portal-do-tecnico-d9270",
+      storageBucket: "portal-do-tecnico-d9270.firebasestorage.app",
+      messagingSenderId: "177928686817",
+      appId: "1:177928686817:web:a4667dfb5989b5e7ce3ba0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Parâmetros na ordem de exibição da tabela.
+    const PARAMS = ["ph_valor","prof_valor","temp_valor","cond_valor","turb_valor","od_valor","sal_valor","sdt_valor"];
+
+    let allRecords = [];      // todos os documentos carregados
+    let userEmails = {};      // uid -> e-mail (da coleção user_data)
+    let unsub = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---------- Autenticação ----------
+    $("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("loginMsg").textContent = "";
+      $("loginBtn").disabled = true;
+      try {
+        await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value);
+      } catch (err) {
+        $("loginMsg").className = "msg err";
+        $("loginMsg").textContent = mapAuthError(err.code);
+      } finally {
+        $("loginBtn").disabled = false;
+      }
+    });
+
+    $("logoutBtn").addEventListener("click", () => signOut(auth));
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        $("login").classList.add("hidden");
+        $("app").classList.remove("hidden");
+        $("whoami").textContent = user.email || "";
+        await loadUserEmails();
+        subscribe();
+      } else {
+        if (unsub) { unsub(); unsub = null; }
+        $("app").classList.add("hidden");
+        $("login").classList.remove("hidden");
+        $("password").value = "";
+      }
+    });
+
+    function mapAuthError(code) {
+      switch (code) {
+        case "auth/invalid-email": return "E-mail inválido.";
+        case "auth/user-not-found":
+        case "auth/wrong-password":
+        case "auth/invalid-credential": return "E-mail ou senha incorretos.";
+        case "auth/too-many-requests": return "Muitas tentativas. Tente mais tarde.";
+        default: return "Não foi possível entrar. (" + code + ")";
+      }
+    }
+
+    // ---------- Dados ----------
+    async function loadUserEmails() {
+      try {
+        const snap = await getDocs(collection(db, "user_data"));
+        userEmails = {};
+        snap.forEach(d => { const v = d.data(); userEmails[d.id] = v.email || d.id; });
+      } catch (_) { /* sem permissão em user_data: seguimos com uid */ }
+    }
+
+    function subscribe() {
+      const q = query(collection(db, "collected_field_data"), orderBy("local_timestamp", "desc"));
+      unsub = onSnapshot(q, (snap) => {
+        allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        buildFilterOptions();
+        render();
+      }, (err) => {
+        alert("Erro ao ler as coletas: " + err.message +
+              "\n\nVerifique se este usuário é administrador (regras do Firestore).");
+      });
+    }
+
+    // ---------- Helpers ----------
+    const tsToDate = (ts) => ts && typeof ts.toDate === "function" ? ts.toDate()
+      : (ts && ts.seconds ? new Date(ts.seconds * 1000) : null);
+
+    function fmtDate(ts) {
+      const d = tsToDate(ts);
+      if (!d) return "—";
+      return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo",
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+    const tech = (r) => userEmails[r.user_id] || r.user_id || "—";
+    const param = (r, k) => (r.parameters && r.parameters[k] != null) ? r.parameters[k] : "";
+
+    function buildFilterOptions() {
+      const pontos = [...new Set(allRecords.map(r => r.point_label || r.point_id).filter(Boolean))].sort();
+      const tecnicos = [...new Set(allRecords.map(r => tech(r)))].sort();
+      fillSelect($("fPonto"), pontos);
+      fillSelect($("fTecnico"), tecnicos);
+    }
+    function fillSelect(sel, values) {
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Todos</option>' + values.map(v => `<option>${esc(v)}</option>`).join("");
+      if (values.includes(cur)) sel.value = cur;
+    }
+    const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function applyFilters() {
+      const ponto = $("fPonto").value, tecnico = $("fTecnico").value, status = $("fStatus").value;
+      const de = $("fDe").value ? new Date($("fDe").value + "T00:00:00") : null;
+      const ate = $("fAte").value ? new Date($("fAte").value + "T23:59:59") : null;
+      const busca = $("fBusca").value.trim().toLowerCase();
+
+      return allRecords.filter(r => {
+        const d = tsToDate(r.local_timestamp);
+        if (ponto && (r.point_label || r.point_id) !== ponto) return false;
+        if (tecnico && tech(r) !== tecnico) return false;
+        if (status !== "" && String(r.synced ? 1 : 0) !== status) return false;
+        if (de && (!d || d < de)) return false;
+        if (ate && (!d || d > ate)) return false;
+        if (busca) {
+          const hay = ((r.point_label || "") + " " + tech(r)).toLowerCase();
+          if (!hay.includes(busca)) return false;
+        }
+        return true;
+      });
+    }
+
+    // ---------- Render ----------
+    let chart = null;
+    function render() {
+      const rows = applyFilters();
+
+      // KPIs (sobre TODOS os registros, não só filtrados)
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const week = new Date(startToday); week.setDate(week.getDate() - 6);
+      const inRange = (r, from) => { const d = tsToDate(r.local_timestamp); return d && d >= from; };
+      $("kTotal").textContent = allRecords.length;
+      $("kHoje").textContent = allRecords.filter(r => inRange(r, startToday)).length;
+      $("kSemana").textContent = allRecords.filter(r => inRange(r, week)).length;
+      $("kPontos").textContent = new Set(allRecords.map(r => r.point_id).filter(Boolean)).size;
+      $("kTecnicos").textContent = new Set(allRecords.map(r => r.user_id).filter(Boolean)).size;
+
+      // Tabela
+      const tb = $("tbody");
+      tb.innerHTML = rows.map(r => `<tr>
+        <td>${fmtDate(r.local_timestamp)}</td>
+        <td>${esc(r.point_label || r.point_id || "—")}</td>
+        <td>${esc(tech(r))}</td>
+        ${PARAMS.map(k => `<td>${esc(param(r, k))}</td>`).join("")}
+        <td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>
+      </tr>`).join("");
+      $("emptyState").classList.toggle("hidden", rows.length > 0);
+      $("tableCount").textContent = `(${rows.length})`;
+
+      renderChart();
+      window._filtered = rows; // usado na exportação
+    }
+
+    function renderChart() {
+      const days = [], counts = [];
+      const base = new Date(); base.setHours(0,0,0,0);
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(base); d.setDate(d.getDate() - i);
+        days.push(d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }));
+        const next = new Date(d); next.setDate(next.getDate() + 1);
+        counts.push(allRecords.filter(r => { const rd = tsToDate(r.local_timestamp); return rd && rd >= d && rd < next; }).length);
+      }
+      const ctx = $("chart");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: days, datasets: [{ label: "Coletas", data: counts, backgroundColor: "#2E9E5B", borderRadius: 4 }] },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+    }
+
+    // ---------- Exportar Excel ----------
+    $("exportBtn").addEventListener("click", () => {
+      const rows = window._filtered || [];
+      if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
+      const data = rows.map(r => ({
+        "Data/Hora": fmtDate(r.local_timestamp),
+        "Ponto": r.point_label || r.point_id || "",
+        "Ponto ID": r.point_id || "",
+        "Técnico": tech(r),
+        "pH": param(r, "ph_valor"), "Profundidade (m)": param(r, "prof_valor"),
+        "Temperatura (°C)": param(r, "temp_valor"), "Condutividade (µS/cm)": param(r, "cond_valor"),
+        "Turbidez (NTU)": param(r, "turb_valor"), "OD (mg/L)": param(r, "od_valor"),
+        "Salinidade (%)": param(r, "sal_valor"), "SDT (mg/L)": param(r, "sdt_valor"),
+        "Status": r.synced ? "Sincronizado" : "Pendente",
+        "ID": r.id
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Coletas");
+      const stamp = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `coletas_PISF_${stamp}.xlsx`);
+    });
+
+    // ---------- Filtros (eventos) ----------
+    ["fPonto","fTecnico","fDe","fAte","fStatus","fBusca"].forEach(id =>
+      $(id).addEventListener("input", render));
+    $("clearBtn").addEventListener("click", () => {
+      ["fPonto","fTecnico","fDe","fAte","fStatus","fBusca"].forEach(id => $(id).value = "");
+      render();
+    });
+  </script>
+</body>
+</html>

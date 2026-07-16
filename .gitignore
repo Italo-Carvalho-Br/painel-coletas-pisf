@@ -1,0 +1,12 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Não versionar chaves de administrador (o painel NÃO usa, mas por segurança)
+serviceAccountKey.json
+*.jks
+*.keystore
+.env
+.env.*
