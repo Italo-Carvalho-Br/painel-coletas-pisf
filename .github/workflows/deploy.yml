@@ -1,0 +1,62 @@
+name: Deploy para Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # permite disparar manualmente pela aba Actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Montar pasta de publicação
+        run: |
+          mkdir publicar
+          cp index.html admin.html .htaccess publicar/
+          cp -r assets publicar/
+
+      - name: Enviar arquivos via FTP (basic-ftp)
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          npm install --no-save basic-ftp@5
+          cat > deploy.mjs <<'EOF'
+          import * as ftp from "basic-ftp";
+
+          // O FTP da Hostinger ocasionalmente dá timeout para os runners do
+          // GitHub, então o upload tenta até 3 vezes antes de desistir.
+          const TENTATIVAS = 3;
+          let ultimoErro = null;
+
+          for (let i = 1; i <= TENTATIVAS; i++) {
+            const c = new ftp.Client(60000);
+            try {
+              await c.access({
+                host: process.env.FTP_SERVER,
+                user: process.env.FTP_USERNAME,
+                password: process.env.FTP_PASSWORD,
+                secure: false,
+              });
+              // A raiz da conta FTP é o public_html do domínio principal;
+              // o docroot do subdomínio painel.* é a subpasta /painel.
+              await c.uploadFromDir("publicar", "/painel");
+              console.log(`Upload concluido (tentativa ${i}).`);
+              ultimoErro = null;
+              c.close();
+              break;
+            } catch (e) {
+              ultimoErro = e;
+              console.log(`Tentativa ${i} falhou: ${e.message}`);
+              c.close();
+              if (i < TENTATIVAS) await new Promise(r => setTimeout(r, 20000));
+            }
+          }
+
+          if (ultimoErro) throw ultimoErro;
+          EOF
+          node deploy.mjs
