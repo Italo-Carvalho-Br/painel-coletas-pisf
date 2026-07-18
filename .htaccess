@@ -1,0 +1,18 @@
+# ===== Painel de Coletas — PISF =====
+
+RewriteEngine On
+
+# Força HTTPS
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# URLs limpas: /index.html vira a raiz do domínio
+RewriteCond %{THE_REQUEST} ^GET\s/+index\.html[\s?] [NC]
+RewriteRule ^ / [R=301,L]
+
+# /admin.html vira /admin
+RewriteCond %{THE_REQUEST} ^GET\s/+admin\.html[\s?] [NC]
+RewriteRule ^ /admin [R=301,L]
+
+# Internamente, /admin serve admin.html (a URL não muda)
+RewriteRule ^admin$ admin.html [L]
