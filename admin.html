@@ -36,8 +36,9 @@
     /* app */
     header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5}
     header .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--green));display:grid;place-items:center;color:#fff;font-size:18px}
-    header h1{font-size:16px;margin:0;flex:1}
-    header .who{font-size:12px;color:var(--text2)}
+    header .brand{height:42px;width:auto;flex:none}
+    header h1{font-size:16px;margin:0;flex:1;min-width:0}
+    header .who{font-size:12px;color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     main{max-width:1000px;margin:0 auto;padding:20px}
     .panel{padding:18px}
     .panel h2{font-size:15px;margin:0 0 4px}
@@ -61,6 +62,20 @@
     .empty{text-align:center;color:var(--hint);padding:30px}
     .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none}
     .toast.show{opacity:1}
+    /* celular */
+    @media (max-width:640px){
+      header{padding:10px 14px;gap:10px}
+      header .brand{height:26px}
+      header h1{font-size:13px;line-height:1.25}
+      header h1 .sufixo{display:none}   /* "de Acessos" só no desktop */
+      header .who{display:none}          /* e-mail já aparece ao sair */
+      main{padding:14px}
+      .panel{padding:14px}
+      /* Adicionar pessoa: campos em largura total, sem apertar */
+      .addrow .field{flex:1 1 100%}
+      .addrow input{width:100%;min-width:0!important}
+      .addrow .btn{width:100%}
+    }
   </style>
 </head>
 <body>
@@ -82,9 +97,8 @@
 
   <div id="app" class="hidden">
     <header>
-      <img src="assets/logo-pisf.png?v=oficial" alt="Consórcio Gestor Ambiental — Projeto São Francisco"
-           style="height:42px;width:auto" />
-      <h1>Administração de Acessos</h1>
+      <img class="brand" src="assets/logo-pisf.png?v=oficial" alt="Consórcio Gestor Ambiental — Projeto São Francisco" />
+      <h1>Administração<span class="sufixo"> de Acessos</span></h1>
       <a class="btn ghost small" href="/">Ver Painel</a>
       <span class="who" id="whoami"></span>
       <button class="btn ghost small" id="logoutBtn">Sair</button>
