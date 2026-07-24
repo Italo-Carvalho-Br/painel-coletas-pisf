@@ -171,9 +171,11 @@
           <table id="tbl">
             <thead><tr>
               <th>Data/Hora</th><th>Ponto</th><th>Técnico</th>
-              <th>pH</th><th>Prof (m)</th><th>Temp (°C)</th><th>Cond (µS/cm)</th>
-              <th>Turb (NTU)</th><th>OD (mg/L)</th><th>Sal (%)</th><th>SDT (mg/L)</th>
-              <th>Status</th>
+              <th>Reserv. (m)</th><th>Tempo</th>
+              <th>pH</th><th>Prof (m)</th><th>Secchi (m)</th><th>Temp (°C)</th>
+              <th>Cond (mS/cm)</th><th>Turb (NTU)</th><th>OD (mg/L)</th>
+              <th>Sal (%)</th><th>STD (g/L)</th><th>ORP (mV)</th>
+              <th>Prof.</th><th>Status</th>
             </tr></thead>
             <tbody id="tbody"></tbody>
           </table>
@@ -209,8 +211,17 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Parâmetros na ordem de exibição da tabela.
-    const PARAMS = ["ph_valor","prof_valor","temp_valor","cond_valor","turb_valor","od_valor","sal_valor","sdt_valor"];
+    // Medições exibidas na tabela, na ordem das colunas (seção "superficial").
+    const PARAMS = ["ph_valor","prof_valor","secchi_valor","temp_valor",
+                    "cond_valor","turb_valor","od_valor","sal_valor",
+                    "std_valor","orp_valor"];
+
+    // Grupos da caracterização do ambiente (para a exportação).
+    const AMBIENTE = [
+      ["tempo","Tempo"], ["ventos","Ventos"], ["margens","Margens"],
+      ["aparencia_agua","Aparência da água"], ["cor_agua","Cor da água"],
+      ["macrofitas","Macrófitas"], ["outros_registros","Outros registros"],
+    ];
 
     let allRecords = [];      // todos os documentos carregados
     let userEmails = {};      // uid -> e-mail (da coleção user_data)
@@ -299,7 +310,40 @@
         day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     }
     const tech = (r) => userEmails[r.user_id] || r.user_id || "—";
-    const param = (r, k) => (r.parameters && r.parameters[k] != null) ? r.parameters[k] : "";
+    // --- Leitores da estrutura de dados da coleta -----------------------------
+    // A partir da v1.2 os dados vêm em seções (superficial / profundidade /
+    // ambiente). O fallback para a raiz mantém legíveis os registros antigos.
+    const secao = (r, nome) => (r.parameters && r.parameters[nome]) || {};
+
+    /// Medição da coleta superficial (ex.: "ph_valor").
+    const param = (r, k) => {
+      const sup = secao(r, "superficial");
+      if (sup[k] != null) return sup[k];
+      return (r.parameters && r.parameters[k] != null) ? r.parameters[k] : "";
+    };
+
+    /// Medição da coleta em profundidade (vazio quando não houve).
+    const paramProf = (r, k) => {
+      const p = secao(r, "profundidade");
+      return p[k] != null ? p[k] : "";
+    };
+
+    /// Item da caracterização do ambiente (listas viram texto separado por ";").
+    const ambiente = (r, k) => {
+      const v = secao(r, "ambiente")[k];
+      if (Array.isArray(v)) return v.join("; ");
+      return v != null ? v : "";
+    };
+
+    const profReservatorio = (r) =>
+      (r.parameters && r.parameters.profundidade_reservatorio_valor != null)
+        ? r.parameters.profundidade_reservatorio_valor : "";
+
+    const temColetaProfunda = (r) =>
+      !!(r.parameters && r.parameters.profundidade);
+
+    const observacoes = (r) =>
+      (r.parameters && r.parameters.observacoes) ? r.parameters.observacoes : "";
 
     function buildFilterOptions() {
       const pontos = [...new Set(allRecords.map(r => r.point_label || r.point_id).filter(Boolean))].sort();
@@ -353,13 +397,21 @@
 
       // Tabela
       const tb = $("tbody");
-      tb.innerHTML = rows.map(r => `<tr>
+      tb.innerHTML = rows.map(r => {
+        const obs = observacoes(r);
+        return `<tr${obs ? ` title="Observações: ${esc(obs)}"` : ""}>
         <td>${fmtDate(r.local_timestamp)}</td>
         <td>${esc(r.point_label || r.point_id || "—")}</td>
         <td>${esc(tech(r))}</td>
+        <td>${esc(profReservatorio(r))}</td>
+        <td>${esc(ambiente(r, "tempo"))}</td>
         ${PARAMS.map(k => `<td>${esc(param(r, k))}</td>`).join("")}
+        <td>${temColetaProfunda(r)
+              ? '<span class="badge ok">sim</span>'
+              : '<span class="badge pend">não</span>'}</td>
         <td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>
-      </tr>`).join("");
+      </tr>`;
+      }).join("");
       $("emptyState").classList.toggle("hidden", rows.length > 0);
       $("tableCount").textContent = `(${rows.length})`;
 
@@ -389,18 +441,50 @@
     $("exportBtn").addEventListener("click", () => {
       const rows = window._filtered || [];
       if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
-      const data = rows.map(r => ({
-        "Data/Hora": fmtDate(r.local_timestamp),
-        "Ponto": r.point_label || r.point_id || "",
-        "Ponto ID": r.point_id || "",
-        "Técnico": tech(r),
-        "pH": param(r, "ph_valor"), "Profundidade (m)": param(r, "prof_valor"),
-        "Temperatura (°C)": param(r, "temp_valor"), "Condutividade (µS/cm)": param(r, "cond_valor"),
-        "Turbidez (NTU)": param(r, "turb_valor"), "OD (mg/L)": param(r, "od_valor"),
-        "Salinidade (%)": param(r, "sal_valor"), "SDT (mg/L)": param(r, "sdt_valor"),
-        "Status": r.synced ? "Sincronizado" : "Pendente",
-        "ID": r.id
-      }));
+      const data = rows.map(r => {
+        const sup = secao(r, "superficial");
+        const prof = secao(r, "profundidade");
+        return {
+          "Data/Hora": fmtDate(r.local_timestamp),
+          "Ponto": r.point_label || r.point_id || "",
+          "Ponto ID": r.point_id || "",
+          "Técnico": tech(r),
+          "Prof. reservatório (m)": profReservatorio(r),
+
+          // --- Caracterização do ambiente ---
+          ...Object.fromEntries(AMBIENTE.map(([k, rotulo]) => [rotulo, ambiente(r, k)])),
+
+          // --- Coleta superficial ---
+          "Sup. hora": sup.hora ?? "",
+          "Sup. profundidade (m)": param(r, "prof_valor"),
+          "Sup. Disco Secchi (m)": param(r, "secchi_valor"),
+          "Sup. pH": param(r, "ph_valor"),
+          "Sup. condutividade (mS/cm)": param(r, "cond_valor"),
+          "Sup. turbidez (NTU)": param(r, "turb_valor"),
+          "Sup. OD (mg/L)": param(r, "od_valor"),
+          "Sup. temperatura (°C)": param(r, "temp_valor"),
+          "Sup. salinidade (%)": param(r, "sal_valor"),
+          "Sup. STD (g/L)": param(r, "std_valor"),
+          "Sup. ORP (mV)": param(r, "orp_valor"),
+
+          // --- Coleta em profundidade (vazio quando reservatório < 5 m) ---
+          "Prof. realizada": temColetaProfunda(r) ? "sim" : "não",
+          "Prof. hora": prof.hora ?? "",
+          "Prof. profundidade (m)": paramProf(r, "prof_valor"),
+          "Prof. pH": paramProf(r, "ph_valor"),
+          "Prof. condutividade (mS/cm)": paramProf(r, "cond_valor"),
+          "Prof. turbidez (NTU)": paramProf(r, "turb_valor"),
+          "Prof. OD (mg/L)": paramProf(r, "od_valor"),
+          "Prof. temperatura (°C)": paramProf(r, "temp_valor"),
+          "Prof. salinidade (%)": paramProf(r, "sal_valor"),
+          "Prof. STD (g/L)": paramProf(r, "std_valor"),
+          "Prof. ORP (mV)": paramProf(r, "orp_valor"),
+
+          "Observações": observacoes(r),
+          "Status": r.synced ? "Sincronizado" : "Pendente",
+          "ID": r.id,
+        };
+      });
       const ws = XLSX.utils.json_to_sheet(data);
       ws["!autofilter"] = { ref: ws["!ref"] };
       const wb = XLSX.utils.book_new();
