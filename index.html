@@ -80,6 +80,12 @@
     .empty { text-align: center; color: var(--hint); padding: 40px; }
     .count { font-size: 12px; color: var(--text2); }
 
+    /* ---- Abas (Coletas / Lacres) ---- */
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { background: var(--surface); border: 1px solid var(--border); color: var(--text2);
+      border-radius: 12px; padding: 10px 18px; font-size: 14px; font-weight: 700; }
+    .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
     /* ---- Celular ---- */
     @media (max-width: 640px) {
       header { padding: 10px 14px; gap: 8px; }
@@ -136,6 +142,12 @@
     </header>
 
     <main>
+      <div class="tabs">
+        <button class="tab active" id="tabColetas">💧 Coletas</button>
+        <button class="tab" id="tabLacres">🧪 Lacres</button>
+      </div>
+
+      <div id="viewColetas">
       <div class="kpis">
         <div class="kpi card"><div class="n" id="kTotal">0</div><div class="l">Total de coletas</div></div>
         <div class="kpi card"><div class="n" id="kHoje">0</div><div class="l">Hoje</div></div>
@@ -182,6 +194,43 @@
         </div>
         <div class="empty hidden" id="emptyState">Nenhuma coleta encontrada com os filtros atuais.</div>
       </div>
+      </div><!-- /viewColetas -->
+
+      <!-- ================= LACRES ================= -->
+      <div id="viewLacres" class="hidden">
+        <div class="kpis">
+          <div class="kpi card"><div class="n" id="lkTotal">0</div><div class="l">Total de lacres</div></div>
+          <div class="kpi card"><div class="n" id="lkHoje">0</div><div class="l">Hoje</div></div>
+          <div class="kpi card"><div class="n" id="lkSemana">0</div><div class="l">Últimos 7 dias</div></div>
+          <div class="kpi card"><div class="n" id="lkPontos">0</div><div class="l">Pontos distintos</div></div>
+          <div class="kpi card"><div class="n" id="lkTecnicos">0</div><div class="l">Técnicos</div></div>
+        </div>
+
+        <div class="toolbar card">
+          <div class="field"><label>Ponto</label><br/><select id="lfPonto"><option value="">Todos</option></select></div>
+          <div class="field"><label>Técnico</label><br/><select id="lfTecnico"><option value="">Todos</option></select></div>
+          <div class="field"><label>De</label><br/><input id="lfDe" type="date" /></div>
+          <div class="field"><label>Até</label><br/><input id="lfAte" type="date" /></div>
+          <div class="field"><label>Status</label><br/>
+            <select id="lfStatus"><option value="">Todos</option><option value="1">Sincronizado</option><option value="0">Pendente</option></select>
+          </div>
+          <div class="field"><label>Busca</label><br/><input id="lfBusca" type="text" placeholder="ponto ou e-mail…" /></div>
+          <div class="spacer"></div>
+          <button class="btn ghost small" id="lclearBtn">Limpar</button>
+          <button class="btn small" id="lexportBtn">⬇ Exportar Excel</button>
+        </div>
+
+        <div class="panel card">
+          <h2>Lacres <span class="count" id="lacCount"></span></h2>
+          <div class="table-wrap">
+            <table id="lacTbl">
+              <thead id="lacThead"></thead>
+              <tbody id="lacTbody"></tbody>
+            </table>
+          </div>
+          <div class="empty hidden" id="lacEmpty">Nenhum lacre encontrado com os filtros atuais.</div>
+        </div>
+      </div><!-- /viewLacres -->
     </main>
   </div>
 
@@ -223,9 +272,30 @@
       ["macrofitas","Macrófitas"], ["outros_registros","Outros registros"],
     ];
 
+    // Lacres (número por amostra) e itens Sim/Não — devem espelhar
+    // LabSealOptions do app. [chave, rótulo completo, rótulo curto p/ a tabela].
+    const LACRES = [
+      ["fitoplancton_superficie","Fitoplâncton (Superfície)","Fito Sup."],
+      ["fitoplancton_fundo","Fitoplâncton (Fundo)","Fito Fundo"],
+      ["sed_margem_zoobentos_quadrado","Sedimento de Margem – Zoobentos (Quadrado)","Zoob. Quadrado"],
+      ["sed_margem_zoobentos_peneira","Sedimento de Margem – Zoobentos Qualitativo (Peneira)","Zoob. Peneira"],
+      ["sed_margem_granulometrica","Sedimento de Margem – Análise Granulométrica","Granul. Margem"],
+      ["macroinvertebrados_fital","Macroinvertebrados associados a Macrófitas (Fital)","Fital"],
+      ["sed_fundo_zoobentos_draga","Sedimento de Fundo – Zoobentos (Draga)","Zoob. Draga"],
+      ["sed_fundo_granulometrica_draga","Sedimento de Fundo – Análise Granulométrica (Draga)","Granul. Draga"],
+      ["cianobacterias_polietileno","Cianobactérias (Frasco de Polietileno – 5.000 mL)","Cianob."],
+    ];
+    const ITENS = [
+      ["biomassa_macrofita_quadrado","Biomassa de Macrófita (Quadrado)","Biomassa"],
+      ["levantamento_floristico","Levantamento Florístico","Florístico"],
+      ["zooplancton","Zooplâncton","Zoopl."],
+    ];
+
     let allRecords = [];      // todos os documentos carregados
+    let allSeals = [];        // lacres carregados (coleção lab_seals)
     let userEmails = {};      // uid -> e-mail (da coleção user_data)
     let unsub = null;
+    let unsubSeals = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -259,8 +329,10 @@
         } catch (_) {}
         await loadUserEmails();
         subscribe();
+        subscribeSeals();
       } else {
         if (unsub) { unsub(); unsub = null; }
+        if (unsubSeals) { unsubSeals(); unsubSeals = null; }
         $("app").classList.add("hidden");
         $("login").classList.remove("hidden");
         $("password").value = "";
@@ -500,6 +572,134 @@
       ["fPonto","fTecnico","fDe","fAte","fStatus","fBusca"].forEach(id => $(id).value = "");
       render();
     });
+
+    // ====================================================================
+    //  LACRES (coleção lab_seals) — espelha a lógica das coletas
+    // ====================================================================
+    function subscribeSeals() {
+      const q = query(collection(db, "lab_seals"), orderBy("local_timestamp", "desc"));
+      unsubSeals = onSnapshot(q, (snap) => {
+        allSeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        buildSealFilterOptions();
+        renderSeals();
+      }, (err) => {
+        console.warn("Erro ao ler lacres:", err.message);
+      });
+    }
+
+    const lacreVal = (r, k) => (r.lacres && r.lacres[k] != null) ? r.lacres[k] : "";
+    const itemVal = (r, k) => {
+      const v = r.itens && r.itens[k];
+      return v === true ? "Sim" : (v === false ? "Não" : "");
+    };
+    const sealObs = (r) => r.observacoes || "";
+
+    function buildSealFilterOptions() {
+      const pontos = [...new Set(allSeals.map(r => r.point_label || r.point_id).filter(Boolean))].sort();
+      const tecnicos = [...new Set(allSeals.map(r => tech(r)))].sort();
+      fillSelect($("lfPonto"), pontos);
+      fillSelect($("lfTecnico"), tecnicos);
+    }
+
+    function applySealFilters() {
+      const ponto = $("lfPonto").value, tecnico = $("lfTecnico").value, status = $("lfStatus").value;
+      const de = $("lfDe").value ? new Date($("lfDe").value + "T00:00:00") : null;
+      const ate = $("lfAte").value ? new Date($("lfAte").value + "T23:59:59") : null;
+      const busca = $("lfBusca").value.trim().toLowerCase();
+      return allSeals.filter(r => {
+        const d = tsToDate(r.local_timestamp);
+        if (ponto && (r.point_label || r.point_id) !== ponto) return false;
+        if (tecnico && tech(r) !== tecnico) return false;
+        if (status !== "" && String(r.synced ? 1 : 0) !== status) return false;
+        if (de && (!d || d < de)) return false;
+        if (ate && (!d || d > ate)) return false;
+        if (busca) {
+          const hay = ((r.point_label || "") + " " + tech(r)).toLowerCase();
+          if (!hay.includes(busca)) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderSeals() {
+      // Cabeçalho dinâmico (montado uma vez).
+      const thead = $("lacThead");
+      if (!thead.dataset.built) {
+        const cols = ['<th>Data/Hora</th>','<th>Ponto</th>','<th>Técnico</th>']
+          .concat(LACRES.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
+          .concat(ITENS.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
+          .concat(['<th>Status</th>']);
+        thead.innerHTML = `<tr>${cols.join("")}</tr>`;
+        thead.dataset.built = "1";
+      }
+
+      const rows = applySealFilters();
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const week = new Date(startToday); week.setDate(week.getDate() - 6);
+      const inRange = (r, from) => { const d = tsToDate(r.local_timestamp); return d && d >= from; };
+      $("lkTotal").textContent = allSeals.length;
+      $("lkHoje").textContent = allSeals.filter(r => inRange(r, startToday)).length;
+      $("lkSemana").textContent = allSeals.filter(r => inRange(r, week)).length;
+      $("lkPontos").textContent = new Set(allSeals.map(r => r.point_id).filter(Boolean)).size;
+      $("lkTecnicos").textContent = new Set(allSeals.map(r => r.user_id).filter(Boolean)).size;
+
+      $("lacTbody").innerHTML = rows.map(r => {
+        const obs = sealObs(r);
+        const tds = [
+          `<td>${fmtDate(r.local_timestamp)}</td>`,
+          `<td>${esc(r.point_label || r.point_id || "—")}</td>`,
+          `<td>${esc(tech(r))}</td>`,
+          ...LACRES.map(([k]) => `<td>${esc(lacreVal(r, k))}</td>`),
+          ...ITENS.map(([k]) => `<td>${esc(itemVal(r, k))}</td>`),
+          `<td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>`,
+        ];
+        return `<tr${obs ? ` title="Observações: ${esc(obs)}"` : ""}>${tds.join("")}</tr>`;
+      }).join("");
+      $("lacEmpty").classList.toggle("hidden", rows.length > 0);
+      $("lacCount").textContent = `(${rows.length})`;
+      window._filteredSeals = rows;
+    }
+
+    $("lexportBtn").addEventListener("click", () => {
+      const rows = window._filteredSeals || [];
+      if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
+      const data = rows.map(r => ({
+        "Data/Hora": fmtDate(r.local_timestamp),
+        "Ponto": r.point_label || r.point_id || "",
+        "Ponto ID": r.point_id || "",
+        "Técnico": tech(r),
+        ...Object.fromEntries(LACRES.map(([k, full]) => [full, lacreVal(r, k)])),
+        ...Object.fromEntries(ITENS.map(([k, full]) => [full, itemVal(r, k)])),
+        "Observações": sealObs(r),
+        "Status": r.synced ? "Sincronizado" : "Pendente",
+        "ID": r.id,
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Lacres");
+      const stamp = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `lacres_PISF_${stamp}.xlsx`);
+    });
+
+    ["lfPonto","lfTecnico","lfDe","lfAte","lfStatus","lfBusca"].forEach(id =>
+      $(id).addEventListener("input", renderSeals));
+    $("lclearBtn").addEventListener("click", () => {
+      ["lfPonto","lfTecnico","lfDe","lfAte","lfStatus","lfBusca"].forEach(id => $(id).value = "");
+      renderSeals();
+    });
+
+    // ---------- Troca de abas (Coletas / Lacres) ----------
+    function setTab(aba) {
+      const coletas = aba === "coletas";
+      $("viewColetas").classList.toggle("hidden", !coletas);
+      $("viewLacres").classList.toggle("hidden", coletas);
+      $("tabColetas").classList.toggle("active", coletas);
+      $("tabLacres").classList.toggle("active", !coletas);
+    }
+    $("tabColetas").addEventListener("click", () => setTab("coletas"));
+    $("tabLacres").addEventListener("click", () => setTab("lacres"));
   </script>
 </body>
 </html>
