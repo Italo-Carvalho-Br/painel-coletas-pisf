@@ -140,6 +140,37 @@
           </div>
           <div class="empty hidden" id="emptyState">Nenhuma pessoa cadastrada ainda. Adicione acima.</div>
         </div>
+
+        <!-- ================= COMUNICADOS ================= -->
+        <div class="panel card" style="margin-top:16px">
+          <h2>Comunicados aos técnicos</h2>
+          <p class="hint">Envie um aviso para <b>todos</b> ou para um técnico específico. Ele aparece no app,
+            no sino de notificações.</p>
+
+          <div class="field"><label>Destinatário</label><br/>
+            <select id="avDest" style="padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;min-width:260px;background:#fff">
+              <option value="todos">Todos os técnicos</option>
+            </select>
+          </div>
+          <div class="field"><label>Título</label><br/>
+            <input id="avTitulo" type="text" placeholder="Assunto do comunicado" style="width:100%;max-width:520px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none" />
+          </div>
+          <div class="field"><label>Mensagem</label><br/>
+            <textarea id="avCorpo" rows="4" placeholder="Escreva o comunicado…" style="width:100%;max-width:520px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none"></textarea>
+          </div>
+          <button class="btn small" id="avEnviar">📣 Enviar comunicado</button>
+
+          <h2 style="margin-top:22px">Enviados</h2>
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr>
+                <th>Quando</th><th>Destinatário</th><th>Título</th><th>Mensagem</th><th class="center">—</th>
+              </tr></thead>
+              <tbody id="avTbody"></tbody>
+            </table>
+          </div>
+          <div class="empty hidden" id="avEmpty">Nenhum comunicado enviado ainda.</div>
+        </div>
       </div>
     </main>
   </div>
@@ -150,7 +181,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc }
+    import { getFirestore, collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc,
+             addDoc, serverTimestamp, query, orderBy }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -168,6 +200,8 @@
 
     const emailKey = (e) => e.trim().toLowerCase();
     let unsub = null;
+    let unsubAvisos = null;
+    let currentUser = null;
 
     function toast(msg) {
       const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -200,10 +234,13 @@
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
         if (unsub) { unsub(); unsub = null; }
+        if (unsubAvisos) { unsubAvisos(); unsubAvisos = null; }
+        currentUser = null;
         $("app").classList.add("hidden"); $("login").classList.remove("hidden");
         $("password").value = "";
         return;
       }
+      currentUser = user;
       $("login").classList.add("hidden"); $("app").classList.remove("hidden");
       $("whoami").textContent = user.email || "";
 
@@ -222,6 +259,7 @@
       $("noAccess").classList.add("hidden");
       $("manager").classList.remove("hidden");
       subscribe();
+      subscribeAvisos();
     });
 
     function subscribe() {
@@ -233,6 +271,7 @@
     }
 
     function render(pessoas) {
+      fillDestinatarios(pessoas);
       const tb = $("tbody");
       $("emptyState").classList.toggle("hidden", pessoas.length > 0);
       tb.innerHTML = pessoas.map(p => {
@@ -279,6 +318,69 @@
         $("novoNome").value = ""; $("novoEmail").value = "";
         toast("Pessoa adicionada.");
       } catch (e) { toast("Erro ao adicionar: " + e.message); }
+    });
+
+    // ================= COMUNICADOS =================
+    function fillDestinatarios(pessoas) {
+      const sel = $("avDest");
+      const atual = sel.value;
+      const opts = ['<option value="todos">Todos os técnicos</option>']
+        .concat(pessoas.map(p => {
+          const email = emailKey(p.email || p.id);
+          const nome = p.nome || email;
+          return `<option value="${esc(email)}">${esc(nome)} (${esc(email)})</option>`;
+        }));
+      sel.innerHTML = opts.join("");
+      if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+    }
+
+    function subscribeAvisos() {
+      const q = query(collection(db, "avisos"), orderBy("criado_em", "desc"));
+      unsubAvisos = onSnapshot(q, (snap) => {
+        const avisos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderAvisos(avisos);
+      }, (err) => toast("Erro ao ler comunicados: " + err.message));
+    }
+
+    const fmtQuando = (ts) => {
+      const d = ts && typeof ts.toDate === "function" ? ts.toDate() : null;
+      if (!d) return "enviando…";
+      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    };
+    const destLabel = (d) => (!d || d === "todos") ? "Todos" : d;
+
+    function renderAvisos(avisos) {
+      $("avEmpty").classList.toggle("hidden", avisos.length > 0);
+      $("avTbody").innerHTML = avisos.map(a => `<tr>
+        <td>${esc(fmtQuando(a.criado_em))}</td>
+        <td>${esc(destLabel(a.destinatario))}</td>
+        <td>${esc(a.titulo || "—")}</td>
+        <td>${esc((a.corpo || "").slice(0, 80))}${(a.corpo || "").length > 80 ? "…" : ""}</td>
+        <td class="center"><button class="btn danger small" data-delav="${esc(a.id)}">Remover</button></td>
+      </tr>`).join("");
+      $("avTbody").querySelectorAll("button[data-delav]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Remover este comunicado?")) return;
+          try { await deleteDoc(doc(db, "avisos", btn.dataset.delav)); toast("Comunicado removido."); }
+          catch (e) { toast("Erro: " + e.message); }
+        });
+      });
+    }
+
+    $("avEnviar").addEventListener("click", async () => {
+      const titulo = $("avTitulo").value.trim();
+      const corpo = $("avCorpo").value.trim();
+      const destinatario = $("avDest").value || "todos";
+      if (!corpo) { toast("Escreva a mensagem do comunicado."); return; }
+      try {
+        await addDoc(collection(db, "avisos"), {
+          titulo, corpo, destinatario,
+          criado_por: currentUser ? currentUser.email : "",
+          criado_em: serverTimestamp(),
+        });
+        $("avTitulo").value = ""; $("avCorpo").value = "";
+        toast("Comunicado enviado.");
+      } catch (e) { toast("Erro ao enviar: " + e.message); }
     });
   </script>
 </body>
