@@ -86,6 +86,48 @@
       border-radius: 12px; padding: 10px 18px; font-size: 14px; font-weight: 700; }
     .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
 
+    /* ---- Ações do gestor (editar/excluir/novo) ---- */
+    .gestor-only { display: none; }
+    body.is-gestor td.gestor-only, body.is-gestor th.gestor-only { display: table-cell; }
+    body.is-gestor .gestor-only.ctrl { display: inline-flex; }
+    .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
+      padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
+    .rowbtn:hover { background: #F2F6F3; }
+    .rowbtn.del:hover { background: rgba(214,69,69,.10); border-color: var(--error); }
+    .btn.novo { background: var(--blue); }
+    .btn.novo:hover { background: #1b5f92; }
+
+    /* ---- Modal (formulário de edição/novo) ---- */
+    #modal { position: fixed; inset: 0; background: rgba(15,30,22,.45);
+      display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px;
+      overflow-y: auto; z-index: 50; }
+    #modal .dialog { background: var(--surface); border-radius: 16px; width: 100%;
+      max-width: 760px; box-shadow: 0 20px 60px rgba(0,0,0,.25); margin: auto; }
+    #modal .dhead { display: flex; align-items: center; gap: 10px; padding: 16px 20px;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface);
+      border-radius: 16px 16px 0 0; }
+    #modal .dhead h3 { margin: 0; font-size: 16px; flex: 1; }
+    #modal .dbody { padding: 18px 20px; }
+    #modal .dfoot { display: flex; gap: 10px; justify-content: flex-end; padding: 16px 20px;
+      border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface); }
+    #modal .x { background: transparent; border: 0; font-size: 20px; color: var(--text2); }
+    .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .fgrid .full { grid-column: 1 / -1; }
+    .fld { display: flex; flex-direction: column; gap: 5px; margin-bottom: 2px; }
+    .fld > label { font-size: 12px; font-weight: 700; color: var(--text2); }
+    .fld input, .fld select, .fld textarea { padding: 9px 11px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 14px; outline: none; font-family: inherit; background: #fff; }
+    .fld input:focus, .fld select:focus, .fld textarea:focus { border-color: var(--green); }
+    .sec-title { font-size: 13px; font-weight: 800; color: var(--blue); margin: 18px 0 8px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chips label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+      border: 1px solid var(--border); border-radius: 20px; padding: 6px 12px; cursor: pointer; }
+    .chips input { accent-color: var(--green); }
+    .modal-msg { font-size: 13px; color: var(--error); margin-right: auto; align-self: center; }
+    .hint-inline { font-size: 11px; color: var(--hint); }
+    @media (max-width: 640px) { .fgrid { grid-template-columns: 1fr; } }
+
     /* ---- Celular ---- */
     @media (max-width: 640px) {
       header { padding: 10px 14px; gap: 8px; }
@@ -168,6 +210,7 @@
         <div class="spacer"></div>
         <button class="btn ghost small" id="clearBtn">Limpar</button>
         <button class="btn small" id="exportBtn">⬇ Exportar Excel</button>
+        <button class="btn small novo gestor-only ctrl" id="novoColetaBtn">+ Nova coleta</button>
       </div>
 
       <div class="grid2">
@@ -187,7 +230,7 @@
               <th>pH</th><th>Prof (m)</th><th>Secchi (m)</th><th>Temp (°C)</th>
               <th>Cond (mS/cm)</th><th>Turb (NTU)</th><th>OD (mg/L)</th>
               <th>Sal (%)</th><th>STD (g/L)</th><th>ORP (mV)</th>
-              <th>Prof.</th><th>Status</th>
+              <th>Prof.</th><th>Status</th><th class="gestor-only">Ações</th>
             </tr></thead>
             <tbody id="tbody"></tbody>
           </table>
@@ -218,6 +261,7 @@
           <div class="spacer"></div>
           <button class="btn ghost small" id="lclearBtn">Limpar</button>
           <button class="btn small" id="lexportBtn">⬇ Exportar Excel</button>
+          <button class="btn small novo gestor-only ctrl" id="novoLacreBtn">+ Novo lacre</button>
         </div>
 
         <div class="panel card">
@@ -232,6 +276,9 @@
         </div>
       </div><!-- /viewLacres -->
     </main>
+
+    <!-- Modal de edição / novo registro (preenchido via JS) -->
+    <div id="modal" class="hidden"></div>
   </div>
 
   <!-- ================= LÓGICA ================= -->
@@ -239,7 +286,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFirestore, collection, onSnapshot, getDocs, query, orderBy, doc, getDoc }
+    import { getFirestore, collection, onSnapshot, getDocs, query, orderBy, doc, getDoc,
+             setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     // ====================================================================
@@ -297,6 +345,11 @@
     let unsub = null;
     let unsubSeals = null;
 
+    // Sessão do gestor (habilita editar/excluir/inserir). Preenchido no login.
+    let isGestor = false;
+    let GESTOR_UID = null;
+    let GESTOR_EMAIL = null;
+
     const $ = (id) => document.getElementById(id);
 
     // ---------- Autenticação ----------
@@ -321,18 +374,24 @@
         $("login").classList.add("hidden");
         $("app").classList.remove("hidden");
         $("whoami").textContent = user.email || "";
-        // Mostra o link "Admin" só para gestores.
+        // Detecta gestor: habilita o link "Admin" e as ações de edição/exclusão/
+        // inserção (editar/excluir/novo). Técnicos comuns seguem só com leitura.
+        GESTOR_UID = user.uid;
+        GESTOR_EMAIL = (user.email || "").toLowerCase();
         try {
-          const g = await getDoc(doc(db, "equipe", (user.email || "").toLowerCase()));
-          $("adminLink").classList.toggle("hidden",
-            !(g.exists() && g.data().gestor === true));
-        } catch (_) {}
+          const g = await getDoc(doc(db, "equipe", GESTOR_EMAIL));
+          isGestor = g.exists() && g.data().gestor === true;
+        } catch (_) { isGestor = false; }
+        $("adminLink").classList.toggle("hidden", !isGestor);
+        document.body.classList.toggle("is-gestor", isGestor);
         await loadUserEmails();
         subscribe();
         subscribeSeals();
       } else {
         if (unsub) { unsub(); unsub = null; }
         if (unsubSeals) { unsubSeals(); unsubSeals = null; }
+        isGestor = false; GESTOR_UID = null; GESTOR_EMAIL = null;
+        document.body.classList.remove("is-gestor");
         $("app").classList.add("hidden");
         $("login").classList.remove("hidden");
         $("password").value = "";
@@ -482,6 +541,7 @@
               ? '<span class="badge ok">sim</span>'
               : '<span class="badge pend">não</span>'}</td>
         <td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>
+        <td class="gestor-only">${acoesCell(r.id)}</td>
       </tr>`;
       }).join("");
       $("emptyState").classList.toggle("hidden", rows.length > 0);
@@ -628,7 +688,7 @@
         const cols = ['<th>Data/Hora</th>','<th>Ponto</th>','<th>Técnico</th>']
           .concat(LACRES.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
           .concat(ITENS.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
-          .concat(['<th>Status</th>']);
+          .concat(['<th>Status</th>','<th class="gestor-only">Ações</th>']);
         thead.innerHTML = `<tr>${cols.join("")}</tr>`;
         thead.dataset.built = "1";
       }
@@ -653,6 +713,7 @@
           ...LACRES.map(([k]) => `<td>${esc(lacreVal(r, k))}</td>`),
           ...ITENS.map(([k]) => `<td>${esc(itemVal(r, k))}</td>`),
           `<td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>`,
+          `<td class="gestor-only">${acoesCell(r.id)}</td>`,
         ];
         return `<tr${obs ? ` title="Observações: ${esc(obs)}"` : ""}>${tds.join("")}</tr>`;
       }).join("");
@@ -700,6 +761,366 @@
     }
     $("tabColetas").addEventListener("click", () => setTab("coletas"));
     $("tabLacres").addEventListener("click", () => setTab("lacres"));
+
+    // ====================================================================
+    //  EDIÇÃO / EXCLUSÃO / INSERÇÃO (apenas gestor)
+    // ====================================================================
+
+    // Catálogo de pontos (espelha MonitoringPoints.all do app).
+    const POINTS = [{"id":"DM","label":"DM - Desemboque de Monteiro PB"},{"id":"Q1","label":"Q1 - Reservatório de Sobradinho"},{"id":"Q2","label":"Q2 - Rio Brigida - Foz do rio Brígida"},{"id":"Q3","label":"Q3 - Rio São Francisco - Captação do eixo norte"},{"id":"Q4","label":"Q4 - Reservatório Tucutu"},{"id":"Q5","label":"Q5 - Reservatório Terra Nova (PROJETADO)"},{"id":"Q6","label":"Q6 - Açude Terra Nova, Eixo da Barragem (EXISTENTE)"},{"id":"Q7","label":"Q7 - Rio Terra Nova - Jusante do Reservatório Terra Nova"},{"id":"Q8","label":"Q8 - Reservatório Serra do Livramento (PROJETADO)"},{"id":"Q9","label":"Q9 - Reservatório Mangueira (PROJETADO)"},{"id":"Q10","label":"Q10 - Reservatório Negreiros (PROJETADO)"},{"id":"Q11","label":"Q11 - Reservatório Milagres (PROJETADO)"},{"id":"Q12","label":"Q12 - Reservatório Jati (PROJETADO)"},{"id":"Q13","label":"Q13 - Açude Atalho – Remanso - CE (EXISTENTE)"},{"id":"Q14","label":"Q14 - Açude Atalho - Eixo da barragem (EXISTENTE)"},{"id":"Q15","label":"Q15 - Reservatório dos Porcos (PROJETADO)"},{"id":"Q16","label":"Q16 - Reservatório Cana Brava (PROJETADO)"},{"id":"Q17","label":"Q17 - Reservatório Cipó (PROJETADO)"},{"id":"Q18","label":"Q18 - Reservatório do Boi I (PROJETADO)"},{"id":"Q19","label":"Q19 - Reservatório do Boi II (PROJETADO)"},{"id":"Q20","label":"Q20 - Reservatório Morros (PROJETADO)"},{"id":"Q21","label":"Q21 - Reservatório Boa Vista (Cuncas) (PROJETADO)"},{"id":"Q22","label":"Q22 - Reservatório Caiçara (PROJETADO)"},{"id":"Q23","label":"Q23 - Rio Salgado - Icó / CE"},{"id":"Q24","label":"Q24 - Açude Orós - CE"},{"id":"Q25","label":"Q25 - Rio Jaguaribe - Montante da confluência com o rio Salgado"},{"id":"Q26","label":"Q26 - Açude Castanhão - Centro"},{"id":"Q27","label":"Q27 - Açude Castanhão - Eixo"},{"id":"Q28","label":"Q28 - Rio Apodi - Montante do remanso do Açude Angicos"},{"id":"Q29","label":"Q29 - Açude Angicos"},{"id":"Q30","label":"Q30 - Rio Apodi - Montante do Remanso do Açude Pau dos Ferros"},{"id":"Q31","label":"Q31 - Açude Pau dos Ferros"},{"id":"Q32","label":"Q32 - Rio Apodi - Pau dos Ferros"},{"id":"Q33","label":"Q33 - Rio Apodi - Remanso de Santa Cruz"},{"id":"Q34","label":"Q34 - Açude Santa Cruz"},{"id":"Q35","label":"Q35 - Rio Apodi - Pedra de Abelhas (Jeroá Apodi)"},{"id":"Q36","label":"Q36 - Rio Piranhas - Montante do remanso do Eng. Ávidos"},{"id":"Q37","label":"Q37 - Açude engenheiro Ávidos"},{"id":"Q38","label":"Q38 - Açude engenheiro Ávidos - Jusante"},{"id":"Q39","label":"Q39 - Rio Piranhas Remanso do Açude São Gonçalo"},{"id":"Q40","label":"Q40 - Açude São Gonçalo - EIXO"},{"id":"Q41","label":"Q41 - Rio Piranhas em São Domingos do Pombal"},{"id":"Q42","label":"Q42 - Açude Coremas – Mãe d'agua (eixo)"},{"id":"Q43","label":"Q43 - Rio Piancó a montante do Rio Piranhas"},{"id":"Q44","label":"Q44 - Rio Piranhas na divisa PB/RN"},{"id":"Q45","label":"Q45 - Rio Piranhas em Oiticica II"},{"id":"Q46","label":"Q46 - Rio Açu - Remanso"},{"id":"Q47","label":"Q47 - Açude Armando Ribeiro Gonçalves centro"},{"id":"Q48","label":"Q48 - Açude Armando Ribeiro Gonçalves - eixo"},{"id":"Q49","label":"Q49 - Açude Chapéu"},{"id":"Q50","label":"Q50 - Açude Entremontes"},{"id":"Q51","label":"Q51 - Reservatório Várzea Grande"},{"id":"Q52","label":"Q52 - Reservatório Tamboril"},{"id":"Q53","label":"Q53 - Reservatório Parnamirim"},{"id":"Q54","label":"Q54 - Reservatório Itaparica"},{"id":"Q55","label":"Q55 - Reservatório de Areias (PROJETADO)"},{"id":"Q56","label":"Q56 - Reservatório de Braúnas (PROJETADO)"},{"id":"Q57","label":"Q57 - Reservatório Mandantes (PROJETADO)"},{"id":"Q58","label":"Q58 - Reservatório Salgueiro (PROJETADO)"},{"id":"Q59","label":"Q59 - Reservatório Muquém (PROJETADO)"},{"id":"Q60","label":"Q60 - Reservatório Cacimba Nova (PROJETADO)"},{"id":"Q61","label":"Q61 - Reservatório Bagres (PROJETADO)"},{"id":"Q62","label":"Q62 - Reservatório Copiti (PROJETADO)"},{"id":"Q63","label":"Q63 - Reservatório Moxotó (PROJETADO)"},{"id":"Q64","label":"Q64 - Reservatório Barreiros (PROJETADO)"},{"id":"Q65","label":"Q65 - Reservatório Campos (PROJETADO)"},{"id":"Q66","label":"Q66 - Reservatório Barro Branco (PROJETADO)"},{"id":"Q67","label":"Q67 - Rio do meio (Montante do açude Poções)"},{"id":"Q68","label":"Q68 - Açude Poções (eixo)"},{"id":"Q69","label":"Q69 - Montante do Remanso do Açude Camalaú"},{"id":"Q70","label":"Q70 - Açude Camalaú"},{"id":"Q71","label":"Q71 - Rio do Meio (Caraúbas)"},{"id":"Q72","label":"Q72 - Remanso Epitácio Pessoa"},{"id":"Q73","label":"Q73 - Açude Epitacio Pessoa"},{"id":"Q74","label":"Q74 - Jusante do Açude Epitácio Pessoa"},{"id":"Q75","label":"Q75 - Rio Paraíba (Bodocongó)"},{"id":"Q76","label":"Q76 - Rio Paraíba (Jusante do Açude Acauã)"},{"id":"Q77","label":"Q77 - Afluente do Açude Barra do Juá (Betânia)"},{"id":"Q78","label":"Q78 - Açude Barra do Juá"},{"id":"Q79","label":"Q79 - Rio Pajeú (Após Riacho do Navio)"},{"id":"Q80","label":"Q80 - Afluente do rio Moxotó e do Açude Poço da Cruz (Carualina)"},{"id":"Q81","label":"Q81 - Ibimirim - PE Açude Poço da Cruz"},{"id":"Q82","label":"Q82 - Rio Moxotó (Jusante do Poço da Cruz)"},{"id":"Q83","label":"Q83 - Rio Moxotó (Inajá)"},{"id":"Q84","label":"Q84 - Reservatório de Itaparica (Nova Petrolândia)"},{"id":"Q85","label":"Q85 - Rio São Francisco em Orocó - PE"},{"id":"Q86","label":"Q86 - Rio São Francisco em Ibó - PE"},{"id":"Q87","label":"Q87 - Reservatório Tambo (PROJETADO)"},{"id":"P01","label":"P01 - Canal C1"},{"id":"P02","label":"P02 - Canal C8"},{"id":"P03","label":"P03 - Riacho Góis"},{"id":"P04","label":"P04 - Reservatório dos Góis"},{"id":"P05","label":"P05 - Reservatório dos Góis"},{"id":"P06","label":"P06 - Riacho Góis"},{"id":"P07","label":"P07 - Canal C9/ Reservatório dos Góis"},{"id":"P08","label":"P08 - Canal C13"},{"id":"P09","label":"P09 - Rio Ipojuca"},{"id":"P10","label":"P10 - Reservatório Ipojuca (Porção Central do Lago )"},{"id":"P11","label":"P11 - Reservatório Projetado Ipojuca"},{"id":"P12","label":"P12 - Rio Ipojuca"},{"id":"P13","label":"P13 - Rio Ipojuca"},{"id":"P14","label":"P14 - Reservatório Pão de Açúcar"},{"id":"P15","label":"P15 - Rio Ipojuca"}];
+
+    // Grupos da caracterização do ambiente (espelha EnvironmentOptions).
+    const ENV_GROUPS = [
+      { key:"tempo", label:"Tempo", multiple:false, opts:["Chuvoso","Nublado","Ensolarado"] },
+      { key:"ventos", label:"Ventos", multiple:false, opts:["Intensos","Moderados","Fracos"] },
+      { key:"margens", label:"Margens", multiple:true, opts:["Ocupação humana","Cultura irrigada","Animais de pastagem","Banhistas","Lavagem de roupa","Bombas de captação particulares"] },
+      { key:"aparencia_agua", label:"Aparência da água", multiple:false, opts:["Barrenta","Transparente","Transparente com materiais em decomposição"] },
+      { key:"cor_agua", label:"Cor da água", multiple:false, opts:["Esverdeada","Amarelo-esverdeada","Pardacenta","Escura"] },
+      { key:"macrofitas", label:"Macrófitas", multiple:true, opts:["Submersas enraizadas","Flutuantes","Emersa com folha flutuante","Emersa não enraizada"] },
+      { key:"outros_registros", label:"Outros registros", multiple:true, opts:["Mortandade de peixes","Vasilhame de agrotóxico","Salga de peixe","Lançamento de esgoto bruto","Presença de odor"] },
+    ];
+    // Medições [chave, rótulo, unidade]. Superficial não pede profundidade (fixa 0,51 m).
+    const SUP_FIELDS = [
+      ["secchi","Disco Secchi","m"],["ph","pH",""],["cond","Condutividade elétrica","mS/cm"],
+      ["turb","Turbidez","NTU"],["od","Oxigênio dissolvido","mg/L"],["temp","Temperatura","°C"],
+      ["sal","Salinidade","%"],["std","STD","g/L"],["orp","ORP","mV"],
+    ];
+    const PROF_FIELDS = [
+      ["prof","Profundidade","m"],["ph","pH",""],["cond","Condutividade elétrica","mS/cm"],
+      ["turb","Turbidez","NTU"],["od","Oxigênio dissolvido","mg/L"],["temp","Temperatura","°C"],
+      ["sal","Salinidade","%"],["std","STD","g/L"],["orp","ORP","mV"],
+    ];
+    const PONTO_SECO_MAX = 0.50, PROF_MIN = 5.0, SUP_PROF_FIXA = 0.51;
+
+    // ---------- Helpers de formulário ----------
+    const parseNum = (s) => {
+      if (s == null) return null;
+      const t = String(s).trim().replace(",", ".");
+      if (t === "") return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    };
+    const numBR = (v) => (v == null || v === "") ? "" : String(v).replace(".", ",");
+    const val = (id) => { const e = $(id); return e ? e.value : ""; };
+    const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+          const r = Math.random()*16|0; return (c==="x"?r:(r&0x3|0x8)).toString(16); }));
+    function partsFromTs(ts) {
+      const d = tsToDate(ts); if (!d) return { date:"", time:"" };
+      const p = (n) => String(n).padStart(2,"0");
+      return { date:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`,
+               time:`${p(d.getHours())}:${p(d.getMinutes())}` };
+    }
+    const hoje = () => { const d=new Date(), p=(n)=>String(n).padStart(2,"0");
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+
+    // ---------- Modal ----------
+    function openModal(titulo, bodyHtml, onSave) {
+      $("modal").innerHTML = `
+        <div class="dialog">
+          <div class="dhead"><h3>${esc(titulo)}</h3><button class="x" id="mClose">✕</button></div>
+          <div class="dbody">${bodyHtml}</div>
+          <div class="dfoot">
+            <span class="modal-msg" id="mMsg"></span>
+            <button class="btn ghost small" id="mCancel">Cancelar</button>
+            <button class="btn small" id="mSave">Salvar</button>
+          </div>
+        </div>`;
+      $("modal").classList.remove("hidden");
+      const close = () => $("modal").classList.add("hidden");
+      $("mClose").onclick = close; $("mCancel").onclick = close;
+      $("modal").onclick = (e) => { if (e.target === $("modal")) close(); };
+      $("mSave").onclick = async () => {
+        $("mSave").disabled = true; $("mMsg").textContent = "";
+        try { const ok = await onSave(); if (ok) close(); }
+        catch (err) { $("mMsg").textContent = "Erro ao salvar: " + (err.message || err); }
+        finally { $("mSave").disabled = false; }
+      };
+    }
+    const setMsg = (m) => { $("mMsg").textContent = m; };
+
+    function pointSelect(id, selId, selLabel) {
+      let opts = POINTS.slice();
+      if (selId && !opts.some(p => p.id === selId)) opts = [{ id:selId, label:selLabel||selId }, ...opts];
+      return `<select id="${id}"><option value="">— selecione —</option>` +
+        opts.map(p => `<option value="${esc(p.id)}"${p.id===selId?" selected":""}>${esc(p.label)}</option>`).join("") +
+        `</select>`;
+    }
+    function envField(g, cur) {
+      if (!g.multiple) {
+        const sel = cur || "";
+        return `<div class="fld"><label>${esc(g.label)}</label>
+          <select id="env_${g.key}"><option value="">—</option>` +
+          g.opts.map(o => `<option${o===sel?" selected":""}>${esc(o)}</option>`).join("") +
+          `</select></div>`;
+      }
+      const arr = Array.isArray(cur) ? cur : [];
+      return `<div class="fld full"><label>${esc(g.label)}</label><div class="chips">` +
+        g.opts.map((o,i) => `<label><input type="checkbox" id="env_${g.key}_${i}" value="${esc(o)}"${arr.includes(o)?" checked":""}/>${esc(o)}</label>`).join("") +
+        `</div></div>`;
+    }
+    function medInputs(prefix, fields, rec, secao) {
+      const src = (rec && rec.parameters && rec.parameters[secao]) || {};
+      return fields.map(([k,label,unit]) => `
+        <div class="fld"><label>${esc(label)}${unit?` (${esc(unit)})`:""}</label>
+          <input id="${prefix}_${k}" inputmode="decimal" value="${esc(numBR(src[k+"_valor"]))}" placeholder="${esc(unit||"valor")}"/>
+        </div>`).join("");
+    }
+
+    // ---------- Formulário de COLETA ----------
+    function openColetaForm(rec) {
+      const p = rec || {};
+      const parts = partsFromTs(p.local_timestamp);
+      const amb = (p.parameters && p.parameters.ambiente) || {};
+      const sup = (p.parameters && p.parameters.superficial) || {};
+      const prof = (p.parameters && p.parameters.profundidade) || {};
+      const body = `
+        <div class="sec-title">Informações gerais</div>
+        <div class="fgrid">
+          <div class="fld full"><label>Ponto de coleta *</label>${pointSelect("f_point", p.point_id, p.point_label)}</div>
+          <div class="fld"><label>Data da coleta *</label><input type="date" id="f_data" value="${esc(parts.date || hoje())}"/></div>
+          <div class="fld"><label>Profundidade do reservatório (m) *</label>
+            <input id="f_reserv" inputmode="decimal" value="${esc(numBR(p.parameters && p.parameters.profundidade_reservatorio_valor))}" placeholder="12,5"/>
+            <span class="hint-inline" id="secoHint"></span>
+          </div>
+          <div class="fld"><label>Hora da coleta superficial *</label><input type="time" id="f_hora_sup" value="${esc(parts.time)}"/></div>
+        </div>
+
+        <div class="sec-title">Caracterização do ambiente</div>
+        <div class="fgrid">${ENV_GROUPS.map(g => envField(g, amb[g.key])).join("")}</div>
+
+        <div id="secSup">
+          <div class="sec-title">Coleta superficial <span class="hint-inline">(profundidade fixa 0,51 m)</span></div>
+          <div class="fgrid">${medInputs("f_sup", SUP_FIELDS, rec, "superficial")}</div>
+        </div>
+
+        <div id="secProf">
+          <div class="sec-title">Coleta em profundidade <span class="hint-inline">(reservatório ≥ 5 m)</span></div>
+          <div class="fgrid">
+            <div class="fld"><label>Hora da coleta em profundidade *</label><input type="time" id="f_hora_prof" value="${esc(prof.hora||"")}"/></div>
+            ${medInputs("f_prof", PROF_FIELDS, rec, "profundidade")}
+          </div>
+        </div>
+
+        <div class="sec-title">Observações</div>
+        <div class="fld full"><textarea id="f_obs" rows="2" placeholder="Opcional">${esc((p.parameters && p.parameters.observacoes) || "")}</textarea></div>
+      `;
+      openModal(rec ? "Editar coleta" : "Nova coleta", body, () => saveColeta(rec));
+      $("f_reserv").addEventListener("input", atualizarSecoes);
+      atualizarSecoes();
+    }
+
+    function atualizarSecoes() {
+      const r = parseNum(val("f_reserv"));
+      const seco = r != null && r < PONTO_SECO_MAX;
+      const temProf = r != null && r >= PROF_MIN;
+      $("secSup").style.display = seco ? "none" : "";
+      $("secProf").style.display = (!seco && temProf) ? "" : "none";
+      $("secoHint").textContent = r == null ? ""
+        : seco ? "Ponto seco: sem coletas físico-químicas."
+        : temProf ? "Coletas superficial e em profundidade."
+        : "Apenas coleta superficial.";
+    }
+
+    async function saveColeta(rec) {
+      const pointId = val("f_point");
+      const data = val("f_data");
+      const reserv = parseNum(val("f_reserv"));
+      if (!pointId) return setMsg("Selecione o ponto."), false;
+      if (!data) return setMsg("Informe a data."), false;
+      if (reserv == null || reserv <= 0) return setMsg("Informe a profundidade do reservatório (> 0)."), false;
+      const pt = POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
+      const seco = reserv < PONTO_SECO_MAX;
+      const temProf = reserv >= PROF_MIN;
+
+      // Ambiente
+      const ambiente = {};
+      for (const g of ENV_GROUPS) {
+        if (g.multiple) {
+          ambiente[g.key] = g.opts.filter((_,i) => $(`env_${g.key}_${i}`).checked);
+        } else {
+          ambiente[g.key] = val(`env_${g.key}`) || null;
+        }
+      }
+      if (!seco) {
+        // Obrigatórios de escolha única (cor é opcional quando a água é Transparente).
+        if (!ambiente.tempo) return setMsg("Selecione o Tempo."), false;
+        if (!ambiente.ventos) return setMsg("Selecione os Ventos."), false;
+        if (!ambiente.aparencia_agua) return setMsg("Selecione a Aparência da água."), false;
+        const transparente = (ambiente.aparencia_agua || "").startsWith("Transparente");
+        if (!transparente && !ambiente.cor_agua) return setMsg("Selecione a Cor da água."), false;
+      }
+
+      const parameters = {
+        profundidade_reservatorio_valor: reserv,
+        profundidade_reservatorio_unidade: "m",
+        ambiente,
+        observacoes: val("f_obs").trim(),
+      };
+
+      let horaSup = val("f_hora_sup");
+      if (seco) {
+        parameters.ponto_seco = true;
+      } else {
+        if (!horaSup) return setMsg("Informe a hora da coleta superficial."), false;
+        const sup = { hora: horaSup, prof_valor: SUP_PROF_FIXA, prof_unidade: "m" };
+        for (const [k,,u] of SUP_FIELDS) {
+          const n = parseNum(val(`f_sup_${k}`));
+          if (n == null) return setMsg(`Preencha a medição superficial: ${k}.`), false;
+          sup[k+"_valor"] = n; sup[k+"_unidade"] = u;
+        }
+        parameters.superficial = sup;
+        if (temProf) {
+          const horaProf = val("f_hora_prof");
+          if (!horaProf) return setMsg("Informe a hora da coleta em profundidade."), false;
+          const pf = { hora: horaProf };
+          for (const [k,,u] of PROF_FIELDS) {
+            const n = parseNum(val(`f_prof_${k}`));
+            if (n == null) return setMsg(`Preencha a medição em profundidade: ${k}.`), false;
+            pf[k+"_valor"] = n; pf[k+"_unidade"] = u;
+          }
+          parameters.profundidade = pf;
+        }
+      }
+
+      // Timestamp do momento da coleta (data + hora superficial; só data se seco).
+      const [Y,M,D] = data.split("-").map(Number);
+      let dt;
+      if (seco) dt = new Date(Y, M-1, D);
+      else { const [h,mi] = horaSup.split(":").map(Number); dt = new Date(Y, M-1, D, h, mi); }
+
+      const id = rec ? rec.id : uuid();
+      const docData = {
+        data_id: id,
+        point_id: pt.id,
+        point_label: pt.label,
+        // Edição preserva o dono original; novo registro fica no gestor.
+        user_id: rec ? rec.user_id : GESTOR_UID,
+        local_timestamp: Timestamp.fromDate(dt),
+        server_timestamp: serverTimestamp(),
+        synced: true,
+        parameters,
+        editado_por: GESTOR_EMAIL,
+        editado_em: serverTimestamp(),
+      };
+      if (!rec) { docData.criado_por = GESTOR_EMAIL; docData.origem = "painel"; }
+
+      // setDoc SEM merge: o documento reflete exatamente o formulário (evita
+      // sobras de seções antigas, ex.: profundidade removida ao editar).
+      await setDoc(doc(db, "collected_field_data", id), docData);
+      return true;
+    }
+
+    // ---------- Formulário de LACRES ----------
+    function openLacreForm(rec) {
+      const p = rec || {};
+      const parts = partsFromTs(p.local_timestamp);
+      const lacres = p.lacres || {};
+      const itens = p.itens || {};
+      const body = `
+        <div class="sec-title">Informações gerais</div>
+        <div class="fgrid">
+          <div class="fld full"><label>Ponto de coleta *</label>${pointSelect("l_point", p.point_id, p.point_label)}</div>
+          <div class="fld"><label>Data *</label><input type="date" id="l_data" value="${esc(parts.date || hoje())}"/></div>
+          <div class="fld"><label>Hora *</label><input type="time" id="l_hora" value="${esc(parts.time)}"/></div>
+        </div>
+        <div class="sec-title">Lacres das amostras (número) *</div>
+        <div class="fgrid">
+          ${LACRES.map(([k,full]) => `<div class="fld"><label>${esc(full)}</label>
+            <input id="lac_${k}" value="${esc(lacres[k]||"")}" placeholder="Nº do lacre"/></div>`).join("")}
+        </div>
+        <div class="sec-title">Itens (Sim/Não) *</div>
+        <div class="fgrid">
+          ${ITENS.map(([k,full]) => { const v = itens[k]; const s = v===true?"Sim":(v===false?"Não":"");
+            return `<div class="fld"><label>${esc(full)}</label>
+              <select id="item_${k}"><option value="">—</option>
+              <option${s==="Sim"?" selected":""}>Sim</option>
+              <option${s==="Não"?" selected":""}>Não</option></select></div>`; }).join("")}
+        </div>
+        <div class="sec-title">Observações</div>
+        <div class="fld full"><textarea id="l_obs" rows="2" placeholder="Opcional">${esc(p.observacoes||"")}</textarea></div>
+      `;
+      openModal(rec ? "Editar lacre" : "Novo lacre", body, () => saveLacre(rec));
+    }
+
+    async function saveLacre(rec) {
+      const pointId = val("l_point"), data = val("l_data"), hora = val("l_hora");
+      if (!pointId) return setMsg("Selecione o ponto."), false;
+      if (!data) return setMsg("Informe a data."), false;
+      if (!hora) return setMsg("Informe a hora."), false;
+      const pt = POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
+
+      const lacres = {};
+      for (const [k, full] of LACRES) {
+        const v = val(`lac_${k}`).trim();
+        if (!v) return setMsg(`Informe o lacre: ${full}.`), false;
+        lacres[k] = v;
+      }
+      const itens = {};
+      for (const [k, full] of ITENS) {
+        const v = val(`item_${k}`);
+        if (v !== "Sim" && v !== "Não") return setMsg(`Responda Sim/Não: ${full}.`), false;
+        itens[k] = (v === "Sim");
+      }
+
+      const [Y,M,D] = data.split("-").map(Number);
+      const [h,mi] = hora.split(":").map(Number);
+      const dt = new Date(Y, M-1, D, h, mi);
+
+      const id = rec ? rec.id : uuid();
+      const docData = {
+        data_id: id,
+        point_id: pt.id,
+        point_label: pt.label,
+        user_id: rec ? rec.user_id : GESTOR_UID,
+        local_timestamp: Timestamp.fromDate(dt),
+        server_timestamp: serverTimestamp(),
+        synced: true,
+        lacres, itens,
+        observacoes: val("l_obs").trim(),
+        editado_por: GESTOR_EMAIL,
+        editado_em: serverTimestamp(),
+      };
+      if (!rec) { docData.criado_por = GESTOR_EMAIL; docData.origem = "painel"; }
+
+      await setDoc(doc(db, "lab_seals", id), docData);
+      return true;
+    }
+
+    // ---------- Ações nas linhas (editar / excluir) ----------
+    const acoesCell = (id) =>
+      `<button class="rowbtn" data-act="edit" data-id="${esc(id)}" title="Editar">✏️</button>` +
+      `<button class="rowbtn del" data-act="del" data-id="${esc(id)}" title="Excluir">🗑️</button>`;
+
+    async function excluir(colecao, id, lista, descricao) {
+      const rec = lista.find(r => r.id === id); if (!rec) return;
+      const quando = fmtDate(rec.local_timestamp);
+      const ponto = rec.point_label || rec.point_id || "—";
+      if (!confirm(`Excluir PERMANENTEMENTE este ${descricao}?\n\n${ponto}\n${quando}\n${tech(rec)}\n\nEsta ação não pode ser desfeita.`)) return;
+      try { await deleteDoc(doc(db, colecao, id)); }
+      catch (err) { alert("Não foi possível excluir: " + (err.message || err)); }
+    }
+
+    if (!$("tbody").dataset.wired) {
+      $("tbody").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]"); if (!b || !isGestor) return;
+        const id = b.dataset.id;
+        if (b.dataset.act === "edit") openColetaForm(allRecords.find(r => r.id === id));
+        else excluir("collected_field_data", id, allRecords, "registro de coleta");
+      });
+      $("tbody").dataset.wired = "1";
+    }
+    if (!$("lacTbody").dataset.wired) {
+      $("lacTbody").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]"); if (!b || !isGestor) return;
+        const id = b.dataset.id;
+        if (b.dataset.act === "edit") openLacreForm(allSeals.find(r => r.id === id));
+        else excluir("lab_seals", id, allSeals, "registro de lacres");
+      });
+      $("lacTbody").dataset.wired = "1";
+    }
+    $("novoColetaBtn").addEventListener("click", () => openColetaForm(null));
+    $("novoLacreBtn").addEventListener("click", () => openLacreForm(null));
   </script>
 </body>
 </html>
