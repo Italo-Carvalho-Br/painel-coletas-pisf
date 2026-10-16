@@ -187,6 +187,7 @@
       <div class="tabs">
         <button class="tab active" id="tabColetas">💧 Coletas</button>
         <button class="tab" id="tabLacres">🧪 Lacres</button>
+        <button class="tab" id="tabVetores">🦟 Vetores</button>
       </div>
 
       <div id="viewColetas">
@@ -275,6 +276,37 @@
           <div class="empty hidden" id="lacEmpty">Nenhum lacre encontrado com os filtros atuais.</div>
         </div>
       </div><!-- /viewLacres -->
+
+      <!-- ================= VETORES ================= -->
+      <div id="viewVetores" class="hidden">
+        <div class="tabs" style="margin-top:0">
+          <button class="tab active" id="vtAspirador">🌬️ Aspirador</button>
+          <button class="tab" id="vtOvitrampa">🧫 Ovitrampas</button>
+          <button class="tab" id="vtShannon">🌙 Shannon</button>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi card"><div class="n" id="vkTotal">0</div><div class="l">Total</div></div>
+          <div class="kpi card"><div class="n" id="vkHoje">0</div><div class="l">Hoje</div></div>
+          <div class="kpi card"><div class="n" id="vkSemana">0</div><div class="l">Últimos 7 dias</div></div>
+          <div class="kpi card"><div class="n" id="vkPontos">0</div><div class="l">Pontos distintos</div></div>
+        </div>
+
+        <div class="toolbar card">
+          <div class="field"><label>Busca</label><br/><input id="vBusca" type="text" placeholder="ponto, campanha ou e-mail…" /></div>
+          <div class="spacer"></div>
+          <button class="btn ghost small" id="vclearBtn">Limpar</button>
+          <button class="btn small" id="vexportBtn">⬇ Exportar Excel</button>
+        </div>
+
+        <div class="panel card">
+          <h2 id="vTitulo">Aspirador Entomológico <span class="count" id="vCount"></span></h2>
+          <div class="table-wrap">
+            <table id="vTbl"><thead id="vThead"></thead><tbody id="vTbody"></tbody></table>
+          </div>
+          <div class="empty hidden" id="vEmpty">Nenhum registro encontrado.</div>
+        </div>
+      </div><!-- /viewVetores -->
     </main>
 
     <!-- Modal de edição / novo registro (preenchido via JS) -->
@@ -387,9 +419,11 @@
         await loadUserEmails();
         subscribe();
         subscribeSeals();
+        subscribeVetores();
       } else {
         if (unsub) { unsub(); unsub = null; }
         if (unsubSeals) { unsubSeals(); unsubSeals = null; }
+        unsubscribeVetores();
         isGestor = false; GESTOR_UID = null; GESTOR_EMAIL = null;
         document.body.classList.remove("is-gestor");
         $("app").classList.add("hidden");
@@ -753,14 +787,17 @@
 
     // ---------- Troca de abas (Coletas / Lacres) ----------
     function setTab(aba) {
-      const coletas = aba === "coletas";
-      $("viewColetas").classList.toggle("hidden", !coletas);
-      $("viewLacres").classList.toggle("hidden", coletas);
-      $("tabColetas").classList.toggle("active", coletas);
-      $("tabLacres").classList.toggle("active", !coletas);
+      const abas = ["coletas", "lacres", "vetores"];
+      const views = { coletas: "viewColetas", lacres: "viewLacres", vetores: "viewVetores" };
+      const tabs = { coletas: "tabColetas", lacres: "tabLacres", vetores: "tabVetores" };
+      for (const a of abas) {
+        $(views[a]).classList.toggle("hidden", a !== aba);
+        $(tabs[a]).classList.toggle("active", a === aba);
+      }
     }
     $("tabColetas").addEventListener("click", () => setTab("coletas"));
     $("tabLacres").addEventListener("click", () => setTab("lacres"));
+    $("tabVetores").addEventListener("click", () => setTab("vetores"));
 
     // ====================================================================
     //  EDIÇÃO / EXCLUSÃO / INSERÇÃO (apenas gestor)
@@ -1121,6 +1158,181 @@
     }
     $("novoColetaBtn").addEventListener("click", () => openColetaForm(null));
     $("novoLacreBtn").addEventListener("click", () => openLacreForm(null));
+
+    // ====================================================================
+    //  VETORES E HOSPEDEIROS (3 atividades) — visualização + exportação
+    // ====================================================================
+    const allVetor = { aspirador: [], ovitrampa: [], shannon: [] };
+    const unsubVetor = { aspirador: null, ovitrampa: null, shannon: null };
+    let vAtivo = "aspirador";
+
+    const sn = (v) => v === true ? "Sim" : (v === false ? "Não" : "");
+    const dthr = (d, h) => d ? `${d}${h ? " " + h : ""}` : "";
+    const sitConcluido = (r) =>
+      !r.concluido ? "Rascunho" : (r.synced ? "Sincronizado" : "Concluído");
+    const estadoLabel = (e) =>
+      ({ rascunho: "Rascunho", ativa: "Ativa", encerrada: "Encerrada" }[e] || e || "");
+
+    const VETOR_CFG = {
+      aspirador: {
+        titulo: "Aspirador Entomológico", colecao: "vetor_aspirador",
+        cols: [
+          ["Data/Hora", r => fmtDate(r.local_timestamp)],
+          ["Ponto", r => r.point_label || r.point_id || ""],
+          ["Técnico", r => tech(r)],
+          ["Campanha", r => r.campanha || ""],
+          ["Início", r => r.hora_inicio || ""],
+          ["Término", r => r.hora_termino || ""],
+          ["Temp mín (°C)", r => r.temp_min ?? ""],
+          ["Temp máx (°C)", r => r.temp_max ?? ""],
+          ["Umidade (%)", r => r.umidade ?? ""],
+          ["Chuva", r => sn(r.chuva)],
+          ["Situação", r => sitConcluido(r)],
+        ],
+      },
+      ovitrampa: {
+        titulo: "Ovitrampas", colecao: "vetor_ovitrampa",
+        cols: [
+          ["Armadilha", r => r.armadilha || ""],
+          ["Ponto", r => r.point_label || r.point_id || ""],
+          ["Técnico", r => tech(r)],
+          ["Campanha", r => r.campanha || ""],
+          ["Instalação", r => dthr(r.instalacao_data, r.instalacao_hora)],
+          ["Retirada", r => dthr(r.retirada_data, r.retirada_hora)],
+          ["Ocorrência", r => r.retirada_ocorrencia || ""],
+          ["Temp mín (°C)", r => r.temp_min ?? ""],
+          ["Temp máx (°C)", r => r.temp_max ?? ""],
+          ["Umidade (%)", r => r.umidade ?? ""],
+          ["Chuva", r => sn(r.chuva)],
+          ["Estado", r => estadoLabel(r.estado)],
+        ],
+      },
+      shannon: {
+        titulo: "Shannon Adaptada", colecao: "vetor_shannon",
+        cols: [
+          ["Data/Hora", r => fmtDate(r.local_timestamp)],
+          ["Ponto", r => r.point_label || r.point_id || ""],
+          ["Técnico", r => tech(r)],
+          ["Campanha", r => r.campanha || ""],
+          ["Fase lunar", r => r.fase_lunar || ""],
+          ["Início", r => r.hora_inicio || ""],
+          ["Término", r => r.hora_termino || ""],
+          ["Temp mín (°C)", r => r.temp_min ?? ""],
+          ["Temp máx (°C)", r => r.temp_max ?? ""],
+          ["Umidade (%)", r => r.umidade ?? ""],
+          ["Chuva", r => sn(r.chuva)],
+          ["Situação", r => sitConcluido(r)],
+        ],
+      },
+    };
+
+    // Caracterização ambiental achatada (comum às 3 fichas) — p/ exportação.
+    function caracCols(r) {
+      const c = r.caracterizacao || {};
+      const arr = (v) => Array.isArray(v) ? v.join("; ") : (v ?? "");
+      return {
+        "Veget.": c.vegetacao || "",
+        "Cond. vegetação": c.vegetacao_condicao || "",
+        "Acúmulo resíduos": sn(c.residuos),
+        "Ocupação": sn(c.ocupacao),
+        "Recreação": arr(c.recreacao),
+        "Recreação (outros)": c.recreacao_outros || "",
+        "Animais pastagem": sn(c.animais_pastagem),
+        "Espécies": arr(c.animais),
+        "Animais (outros)": c.animais_outros || "",
+        "Vestígios": arr(c.vestigios),
+        "Próx. estrada": sn(c.estrada),
+        "Trânsito veículos": sn(c.veiculos),
+        "Tipos veículos": arr(c.veiculos_tipos),
+        "Vento": c.vento || "",
+      };
+    }
+
+    function subscribeVetores() {
+      for (const k of Object.keys(VETOR_CFG)) {
+        const q = query(collection(db, VETOR_CFG[k].colecao),
+          orderBy("local_timestamp", "desc"));
+        unsubVetor[k] = onSnapshot(q, (snap) => {
+          allVetor[k] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if (vAtivo === k) renderVetor();
+        }, (err) => console.warn(`Erro ao ler ${k}:`, err.message));
+      }
+    }
+    function unsubscribeVetores() {
+      for (const k of Object.keys(unsubVetor)) {
+        if (unsubVetor[k]) { unsubVetor[k](); unsubVetor[k] = null; }
+      }
+    }
+
+    function vetorFiltrados() {
+      const busca = $("vBusca").value.trim().toLowerCase();
+      let rows = allVetor[vAtivo] || [];
+      if (busca) {
+        rows = rows.filter(r => {
+          const hay = `${r.point_label || ""} ${r.campanha || ""} ${tech(r)}`.toLowerCase();
+          return hay.includes(busca);
+        });
+      }
+      return rows;
+    }
+
+    function renderVetor() {
+      const cfg = VETOR_CFG[vAtivo];
+      $("vTitulo").innerHTML = `${esc(cfg.titulo)} <span class="count" id="vCount"></span>`;
+      // Cabeçalho
+      $("vThead").innerHTML =
+        `<tr>${cfg.cols.map(([h]) => `<th>${esc(h)}</th>`).join("")}</tr>`;
+      const rows = vetorFiltrados();
+      $("vTbody").innerHTML = rows.map(r =>
+        `<tr>${cfg.cols.map(([, f]) => `<td>${esc(f(r))}</td>`).join("")}</tr>`).join("");
+      $("vEmpty").classList.toggle("hidden", rows.length > 0);
+      $("vCount").textContent = `(${rows.length})`;
+
+      // KPIs (sobre todos os registros da atividade)
+      const todos = allVetor[vAtivo] || [];
+      const now = new Date();
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const week = new Date(startToday); week.setDate(week.getDate() - 6);
+      const inRange = (r, from) => { const d = tsToDate(r.local_timestamp); return d && d >= from; };
+      $("vkTotal").textContent = todos.length;
+      $("vkHoje").textContent = todos.filter(r => inRange(r, startToday)).length;
+      $("vkSemana").textContent = todos.filter(r => inRange(r, week)).length;
+      $("vkPontos").textContent = new Set(todos.map(r => r.point_id).filter(Boolean)).size;
+      window._vFiltrados = rows;
+    }
+
+    function setVetorAba(k) {
+      vAtivo = k;
+      $("vtAspirador").classList.toggle("active", k === "aspirador");
+      $("vtOvitrampa").classList.toggle("active", k === "ovitrampa");
+      $("vtShannon").classList.toggle("active", k === "shannon");
+      renderVetor();
+    }
+    $("vtAspirador").addEventListener("click", () => setVetorAba("aspirador"));
+    $("vtOvitrampa").addEventListener("click", () => setVetorAba("ovitrampa"));
+    $("vtShannon").addEventListener("click", () => setVetorAba("shannon"));
+    $("vBusca").addEventListener("input", renderVetor);
+    $("vclearBtn").addEventListener("click", () => { $("vBusca").value = ""; renderVetor(); });
+
+    $("vexportBtn").addEventListener("click", () => {
+      const cfg = VETOR_CFG[vAtivo];
+      const rows = window._vFiltrados || [];
+      if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
+      const data = rows.map(r => {
+        const base = {};
+        for (const [h, f] of cfg.cols) base[h] = f(r);
+        const obs = vAtivo === "ovitrampa"
+          ? { "Obs. instalação": r.observacoes_instalacao || "", "Obs. retirada": r.retirada_obs || "" }
+          : { "Observações": r.observacoes || "" };
+        return { ...base, ...caracCols(r), ...obs, "ID": r.id };
+      });
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws["!autofilter"] = { ref: ws["!ref"] };
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, cfg.titulo.slice(0, 28));
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `vetores_${vAtivo}_PISF_${stamp}.xlsx`);
+    });
   </script>
 </body>
 </html>
