@@ -354,10 +354,11 @@
               <option value="vet_aspirador">Vetores — Aspirador</option>
               <option value="vet_ovitrampa">Vetores — Ovitrampas</option>
               <option value="vet_shannon">Vetores — Shannon</option>
+              <option value="rastreabilidade">Rastreabilidade das Amostras</option>
             </select>
           </div>
-          <div class="field"><label>Ponto</label><br/><select id="fkPonto"><option value="">—</option></select></div>
-          <div class="field"><label>Data</label><br/><select id="fkData"><option value="">—</option></select></div>
+          <div class="field"><label id="fkPontoLab">Ponto</label><br/><select id="fkPonto"><option value="">—</option></select></div>
+          <div class="field"><label id="fkDataLab">Data</label><br/><select id="fkData"><option value="">—</option></select></div>
           <div class="spacer"></div>
           <button class="btn small" id="fkGerar">Gerar ficha</button>
           <button class="btn ghost small hidden" id="fkPrint">🖨️ Imprimir / PDF</button>
@@ -997,6 +998,9 @@
           </div>
         </div>
 
+        <div class="sec-title">Campanha</div>
+        <div class="fld full"><input id="f_campanha" value="${esc(p.campanha||"")}" placeholder="Ex.: 34ª Campanha"/></div>
+
         <div class="sec-title">Observações</div>
         <div class="fld full"><textarea id="f_obs" rows="2" placeholder="Opcional">${esc((p.parameters && p.parameters.observacoes) || "")}</textarea></div>
       `;
@@ -1095,6 +1099,7 @@
         server_timestamp: serverTimestamp(),
         synced: true,
         parameters,
+        campanha: val("f_campanha").trim(),
         editado_por: GESTOR_EMAIL,
         editado_em: serverTimestamp(),
       };
@@ -1118,6 +1123,12 @@
           <div class="fld full"><label>Ponto de coleta *</label>${pointSelect("l_point", p.point_id, p.point_label)}</div>
           <div class="fld"><label>Data *</label><input type="date" id="l_data" value="${esc(parts.date || hoje())}"/></div>
           <div class="fld"><label>Hora *</label><input type="time" id="l_hora" value="${esc(parts.time)}"/></div>
+        </div>
+        <div class="sec-title">Entrega e campanha</div>
+        <div class="fgrid">
+          <div class="fld"><label>Data de entrega</label><input type="date" id="l_entrega" value="${esc(p.data_entrega||"")}"/></div>
+          <div class="fld"><label>Local de entrega</label><input id="l_local" value="${esc(p.local_entrega||"")}" placeholder="Ex.: UNEB, UFPE…"/></div>
+          <div class="fld full"><label>Campanha</label><input id="l_campanha" value="${esc(p.campanha||"")}" placeholder="Ex.: 34ª Campanha"/></div>
         </div>
         <div class="sec-title">Lacres das amostras (número) *</div>
         <div class="fgrid">
@@ -1173,6 +1184,9 @@
         synced: true,
         lacres, itens,
         observacoes: val("l_obs").trim(),
+        data_entrega: val("l_entrega") || "",
+        local_entrega: val("l_local").trim(),
+        campanha: val("l_campanha").trim(),
         editado_por: GESTOR_EMAIL,
         editado_em: serverTimestamp(),
       };
@@ -1417,9 +1431,51 @@
       };
     }
     const pontoDe = (r) => r.point_label || r.point_id || "";
+    // Data ISO (yyyy-mm-dd) -> dd/mm/aaaa
+    const brDate = (iso) => {
+      if (!iso) return "";
+      const m = String(iso).slice(0, 10).split("-");
+      return (m.length === 3) ? `${m[2]}/${m[1]}/${m[0]}` : String(iso);
+    };
+
+    // Subtipos de amostra p/ a Rastreabilidade (9 lacres numerados + 3 itens "-").
+    const SUBTIPOS = [
+      { key: "fitoplancton_superficie", kind: "lacre", nome: "Fitoplâncton - superfície" },
+      { key: "fitoplancton_fundo", kind: "lacre", nome: "Fitoplâncton - fundo" },
+      { key: "sed_margem_zoobentos_quadrado", kind: "lacre", nome: "Sedimento de margem - zoobentos (quadrado)" },
+      { key: "sed_margem_zoobentos_peneira", kind: "lacre", nome: "Sedimento de margem - zoobentos qualitativo (peneira)" },
+      { key: "sed_margem_granulometrica", kind: "lacre", nome: "Sedimento de margem - análise granulométrica" },
+      { key: "macroinvertebrados_fital", kind: "lacre", nome: "Macroinvertebrados associados a macrófitas (Fital)" },
+      { key: "sed_fundo_zoobentos_draga", kind: "lacre", nome: "Sedimento de fundo - zoobentos (draga)" },
+      { key: "sed_fundo_granulometrica_draga", kind: "lacre", nome: "Sedimento de fundo - análise granulométrica (draga)" },
+      { key: "cianobacterias_polietileno", kind: "lacre", nome: "Cianobactérias" },
+      { key: "biomassa_macrofita_quadrado", kind: "item", nome: "Biomassa de macrófita (quadrado)" },
+      { key: "levantamento_floristico", kind: "item", nome: "Levantamento florístico" },
+      { key: "zooplancton", kind: "item", nome: "Zooplâncton" },
+    ];
+    // Amostra existe? (valor só "0"/vazio/"Não" = não há amostra)
+    function amostraPresente(r, sub) {
+      if (sub.kind === "lacre") {
+        const v = (r.lacres || {})[sub.key];
+        const s = v == null ? "" : String(v).trim();
+        return s !== "" && s !== "0";
+      }
+      const v = (r.itens || {})[sub.key];
+      return v === true || v === "Sim" || v === 1 || v === "1";
+    }
 
     function fichaPopularPontos() {
       const tipo = $("fkTipo").value;
+      if (tipo === "rastreabilidade") {
+        $("fkPontoLab").textContent = "Amostra";
+        $("fkDataLab").textContent = "Data de entrega";
+        $("fkPonto").innerHTML = '<option value="">—</option>' +
+          SUBTIPOS.map(s => `<option value="${s.key}">${esc(s.nome)}</option>`).join("");
+        $("fkData").innerHTML = '<option value="">—</option>';
+        return;
+      }
+      $("fkPontoLab").textContent = "Ponto";
+      $("fkDataLab").textContent = "Data";
       const ds = tipo ? FICHA_SRC[tipo]() : [];
       const pontos = [...new Set(ds.map(pontoDe).filter(Boolean))].sort();
       $("fkPonto").innerHTML = '<option value="">—</option>' +
@@ -1427,7 +1483,18 @@
       $("fkData").innerHTML = '<option value="">—</option>';
     }
     function fichaPopularDatas() {
-      const tipo = $("fkTipo").value, ponto = $("fkPonto").value;
+      const tipo = $("fkTipo").value;
+      if (tipo === "rastreabilidade") {
+        const sub = SUBTIPOS.find(s => s.key === $("fkPonto").value);
+        const datas = sub ? [...new Set(allSeals
+          .filter(r => r.data_entrega && amostraPresente(r, sub))
+          .map(r => String(r.data_entrega).slice(0, 10)))]
+          .sort((a, b) => b.localeCompare(a)) : [];
+        $("fkData").innerHTML = '<option value="">—</option>' +
+          datas.map(d => `<option value="${d}">${esc(brDate(d))}</option>`).join("");
+        return;
+      }
+      const ponto = $("fkPonto").value;
       const ds = tipo ? FICHA_SRC[tipo]() : [];
       const datas = [...new Map(
         ds.filter(r => pontoDe(r) === ponto)
@@ -1447,12 +1514,13 @@
     }
 
     // Coordenadas (pdf-lib, origem inferior-esquerda) por ficha oficial.
-    const FICHAS_COORDS = {"cianobacterias":{"data_coleta":[{"x":98.5,"y":689.7},{"x":98.5,"y":324.0}],"hora_coleta":[{"x":99.2,"y":674.9},{"x":99.2,"y":309.1}],"ponto":[{"x":105.2,"y":615.2},{"x":59.3,"y":249.5}],"cianobacteria":[{"x":108.2,"y":577.8},{"x":108.2,"y":212.0}]},"zooplancton":{"data_coleta":[{"x":93.4,"y":689.7},{"x":93.4,"y":324.0}],"hora_coleta":[{"x":94.1,"y":674.9},{"x":94.1,"y":309.1}],"ponto":[{"x":100.2,"y":615.2},{"x":54.3,"y":249.5}],"zooplancton":[{"x":85.1,"y":577.8},{"x":85.1,"y":212.0}]},"macrofitas":{"data_coleta":[{"x":98.1,"y":680.1},{"x":98.1,"y":352.4}],"hora_coleta":[{"x":98.8,"y":665.3},{"x":98.8,"y":337.5}],"ponto":[{"x":59.0,"y":618.3},{"x":104.8,"y":290.6}],"floristico":[{"x":140.9,"y":572.0},{"x":140.9,"y":244.3}],"biomassa":[{"x":189.7,"y":259.2},{"x":189.7,"y":586.9}]},"sedimentos":{"data_coleta":[{"x":92.8,"y":719.6},{"x":92.8,"y":298.3}],"hora_coleta":[{"x":93.5,"y":704.8},{"x":93.5,"y":283.9}],"ponto":[{"x":98.0,"y":648.1},{"x":55.5,"y":226.2}],"fito_sup":[{"x":232,"y":611.5},{"x":232,"y":189.6}],"fito_fundo":[{"x":232,"y":597.1},{"x":232,"y":175.2}],"sed_margem_quadrado":[{"x":397,"y":560.5},{"x":397,"y":138.6}],"sed_margem_peneira":[{"x":397,"y":545.7},{"x":397,"y":123.8}],"sed_margem_granulo":[{"x":397,"y":531.0},{"x":397,"y":109.0}],"fital":[{"x":397,"y":516.2},{"x":397,"y":94.3}],"sed_fundo_zoob_draga":[{"x":397,"y":501.4},{"x":397,"y":79.5}],"sed_fundo_granulo_draga":[{"x":397,"y":487.0},{"x":397,"y":65.1}]}};
+    const FICHAS_COORDS = {"cianobacterias":{"data_coleta":[{"x":98.5,"y":689.7},{"x":98.5,"y":324.0}],"hora_coleta":[{"x":99.2,"y":674.9},{"x":99.2,"y":309.1}],"data_entrega":[{"x":104.3,"y":652.3},{"x":104.3,"y":286.5}],"ponto":[{"x":105.2,"y":615.2},{"x":59.3,"y":249.5}],"cianobacteria":[{"x":108.2,"y":577.8},{"x":108.2,"y":212.0}]},"zooplancton":{"data_coleta":[{"x":93.4,"y":689.7},{"x":93.4,"y":324.0}],"hora_coleta":[{"x":94.1,"y":674.9},{"x":94.1,"y":309.1}],"data_entrega":[{"x":99.3,"y":652.3},{"x":99.3,"y":286.5}],"ponto":[{"x":100.2,"y":615.2},{"x":54.3,"y":249.5}],"zooplancton":[{"x":85.1,"y":577.8},{"x":85.1,"y":212.0}]},"macrofitas":{"data_coleta":[{"x":98.1,"y":680.1},{"x":98.1,"y":352.4}],"hora_coleta":[{"x":98.8,"y":665.3},{"x":98.8,"y":337.5}],"data_entrega":[{"x":106.0,"y":649.1},{"x":106.0,"y":321.3}],"ponto":[{"x":59.0,"y":618.3},{"x":104.8,"y":290.6}],"biomassa":[{"x":189.7,"y":586.9},{"x":189.7,"y":259.2}],"floristico":[{"x":140.9,"y":244.3},{"x":140.9,"y":572.0}]},"sedimentos":{"data_coleta":[{"x":92.8,"y":719.6},{"x":92.8,"y":298.3}],"hora_coleta":[{"x":93.5,"y":704.8},{"x":93.5,"y":283.9}],"data_entrega":[{"x":98.7,"y":684.0},{"x":98.7,"y":262.0}],"ponto":[{"x":98.0,"y":648.1},{"x":55.5,"y":226.2}],"fito_sup":[{"x":232,"y":611.5},{"x":232,"y":189.6}],"fito_fundo":[{"x":232,"y":597.1},{"x":232,"y":175.2}],"sed_margem_quadrado":[{"x":397,"y":560.5},{"x":397,"y":138.6}],"sed_margem_peneira":[{"x":397,"y":545.7},{"x":397,"y":123.8}],"sed_margem_granulo":[{"x":397,"y":531.0},{"x":397,"y":109.0}],"fital":[{"x":397,"y":516.2},{"x":397,"y":94.3}],"sed_fundo_zoob_draga":[{"x":397,"y":501.4},{"x":397,"y":79.5}],"sed_fundo_granulo_draga":[{"x":397,"y":487.0},{"x":397,"y":65.1}]}};
     const PDF_FICHAS = new Set(["cianobacterias", "zooplancton", "macrofitas", "sedimentos"]);
 
     function valoresFicha(tipo, r) {
       const t = tsParts(r.local_timestamp);
-      const base = { data_coleta: t.data, hora_coleta: t.hora, ponto: pontoDe(r) };
+      const base = { data_coleta: t.data, hora_coleta: t.hora, ponto: pontoDe(r),
+                     data_entrega: brDate(r.data_entrega) };
       if (tipo === "cianobacterias")
         return { ...base, cianobacteria: lacreVal(r, "cianobacterias_polietileno") };
       if (tipo === "zooplancton")
@@ -1495,7 +1563,7 @@
     }
 
     // Ficha de Limnologia: marca as opções da caracterização + tabelas HORIBA.
-    const LIMNO_COORDS = {"labels":{"ponto":[80.1,762.4],"data":[74.4,742.2],"sup_prof":[132.9,425.1],"sup_secchi":[382.0,425.1],"prof_prof":[132.9,283.4],"sup_hora":[507,444.8],"prof_hora":[507,303.0]},"params":{"sup":{"ph":[64,336.9],"cond":[123,336.9],"turb":[185,336.9],"od":[258,336.9],"temp":[322,336.9],"sal":[382,336.9],"std":[450,336.9],"orp":[512,336.9]},"prof":{"ph":[64,191.9],"cond":[123,191.9],"turb":[185,191.9],"od":[258,191.9],"temp":[322,191.9],"sal":[382,191.9],"std":[450,191.9],"orp":[512,191.9]}},"marks":{"tempo":{"Chuvoso":[109.2,682.8],"Nublado":[173.3,682.8],"Ensolarado":[231.6,682.8]},"ventos":{"Intensos":[365.3,682.8],"Moderados":[422.6,682.8],"Fracos":[497.7,682.8]},"margens":{"Ocupação humana":[115.0,651.2],"Cultura irrigada":[175.7,651.2],"Animais de pastagem":[231.4,651.2],"Banhistas":[298.8,644.0],"Lavagem de roupa":[357.4,651.2],"Bombas de captação particulares":[433.7,651.6]},"aparencia_agua":{"Barrenta":[140.8,605.6],"Transparente":[258.5,605.6],"Transparente com materiais em decomposição":[379.0,612.8]},"cor_agua":{"Esverdeada":[134.7,566.7],"Amarelo-esverdeada":[242.3,566.7],"Pardacenta":[391.0,566.7],"Escura":[497.6,566.2]},"macrofitas":{"Submersas enraizadas":[110.9,527.8],"Flutuantes":[225.8,527.3],"Emersa com folha flutuante":[324.6,535.0],"Emersa não enraizada":[431.1,527.8]},"outros_registros":{"Mortandade de peixes":[110.3,485.6],"Vasilhame de agrotóxico":[233.7,485.6],"Salga de peixe":[365.4,492.3],"Lançamento de esgoto bruto":[420.5,500.7],"Presença de odor":[491.7,492.3]}},"obs":[48,143]};
+    const LIMNO_COORDS = {"labels":{"ponto":[87.2,750.9],"data":[81.7,731.4],"sup_prof":[138.0,426.6],"sup_secchi":[376.5,426.6],"prof_prof":[138.0,290.3],"sup_hora":[507,445.6],"prof_hora":[507,309.3]},"params":{"sup":{"ph":[64,336.9],"cond":[123,336.9],"turb":[185,336.9],"od":[258,336.9],"temp":[322,336.9],"sal":[382,336.9],"std":[450,336.9],"orp":[512,336.9]},"prof":{"ph":[64,199.9],"cond":[123,199.9],"turb":[185,199.9],"od":[258,199.9],"temp":[322,199.9],"sal":[382,199.9],"std":[450,199.9],"orp":[512,199.9]}},"marks":{"tempo":{"Chuvoso":[114.8,674.3],"Nublado":[176.0,674.3],"Ensolarado":[231.8,674.3]},"ventos":{"Intensos":[360.2,674.3],"Moderados":[415.1,674.3],"Fracos":[487.2,674.3]},"margens":{"Ocupação humana":[120.2,643.8],"Cultura irrigada":[178.4,643.8],"Animais de pastagem":[231.8,643.8],"Banhistas":[296.4,637.0],"Lavagem de roupa":[352.5,643.8],"Bombas de captação particulares":[425.8,644.3]},"aparencia_agua":{"Barrenta":[145.0,600.2],"Transparente":[257.8,600.2],"Transparente com materiais em decomposição":[373.5,607.0]},"cor_agua":{"Esverdeada":[139.1,562.8],"Amarelo-esverdeada":[242.5,562.8],"Pardacenta":[384.7,562.8],"Escura":[487.0,562.4]},"macrofitas":{"Submersas enraizadas":[116.6,525.5],"Flutuantes":[226.2,525.0],"Emersa com folha flutuante":[321.3,532.4],"Emersa não enraizada":[423.4,525.5]},"outros_registros":{"Mortandade de peixes":[115.7,485.0],"Vasilhame de agrotóxico":[234.1,485.0],"Salga de peixe":[360.3,491.3],"Lançamento de esgoto bruto":[413.0,499.4],"Presença de odor":[481.4,491.3]}},"obs":[48,151.9]};
 
     const brn = (v) => (v == null || v === "") ? "" : String(v).replace(".", ",");
 
@@ -1595,11 +1663,92 @@
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
 
+    // Ficha de Rastreabilidade (rastreabilidade.pdf): cabeçalho + tabela de amostras.
+    const RASTREAB_COORDS = {"page":0,"header":{"data_entrega":[122.9,723.0],"amostra":[127.4,707.1],"local":[129.5,691.3],"quantidade":[220.7,675.4]},"cols":{"data":30,"ponto":136,"etiqueta":482},"rows":[638.3,622.5,606.7,590.8,575.0,559.1,543.3,527.5,511.6,495.8,479.9,464.7,450.1,435.4,420.8,406.1,391.5,376.9,362.2,347.6,332.9,318.3,303.7,289.0,274.4,259.7,245.1,230.5,215.8,201.2,186.5,171.9,157.3,142.6,128.0,113.3,98.7,83.8]};
+
+    // Reúne as amostras de um subtipo entregues numa data e preenche o PDF.
+    async function gerarRastreabPDF(subKey, dataEnt) {
+      const sub = SUBTIPOS.find(s => s.key === subKey);
+      if (!sub) return 0;
+      const linhas = allSeals
+        .filter(r => String(r.data_entrega || "").slice(0, 10) === dataEnt && amostraPresente(r, sub))
+        .map(r => {
+          const t = tsParts(r.local_timestamp);
+          return {
+            data: t.data, key: t.key, ponto: pontoDe(r),
+            etiqueta: sub.kind === "lacre" ? String((r.lacres || {})[sub.key]).trim() : "-",
+            local: r.local_entrega || "",
+          };
+        })
+        .sort((a, b) => (a.key + a.ponto).localeCompare(b.key + b.ponto));
+      if (!linhas.length) return 0;
+
+      const C = RASTREAB_COORDS, perPage = C.rows.length;
+      const bytes = await fetch("assets/fichas/rastreabilidade.pdf").then(x => x.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const nPages = Math.max(1, Math.ceil(linhas.length / perPage));
+      // páginas extras (cópias do template em branco) criadas ANTES de desenhar
+      for (let i = 1; i < nPages; i++) { const [pp] = await pdfDoc.copyPages(pdfDoc, [0]); pdfDoc.addPage(pp); }
+      const azul = PDFLib.rgb(0, 0, 0.6);
+      const local = (linhas.find(l => l.local) || {}).local || "";
+      const pages = pdfDoc.getPages();
+      const draw = (page, xy, t, size = 10) => {
+        if (t == null || t === "" || !xy) return;
+        page.drawText(String(t), { x: xy[0], y: xy[1], size, font, color: azul });
+      };
+      for (let pi = 0; pi < nPages; pi++) {
+        const page = pages[pi];
+        draw(page, C.header.data_entrega, brDate(dataEnt));
+        draw(page, C.header.amostra, sub.nome);
+        draw(page, C.header.local, local);
+        draw(page, C.header.quantidade, String(linhas.length), 11);
+        linhas.slice(pi * perPage, (pi + 1) * perPage).forEach((l, idx) => {
+          const y = C.rows[idx];
+          draw(page, [C.cols.data, y], l.data, 9);
+          draw(page, [C.cols.ponto, y], l.ponto, 9);
+          draw(page, [C.cols.etiqueta, y], l.etiqueta, 9);
+        });
+      }
+      const out = await pdfDoc.save();
+      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return linhas.length;
+    }
+
     $("fkGerar").addEventListener("click", async () => {
       const tipo = $("fkTipo").value;
-      const r = acharRegistro();
       const prev = $("fichaPreview");
       if (!tipo) { alert("Selecione a ficha."); return; }
+      if (tipo === "rastreabilidade") {
+        const subKey = $("fkPonto").value, dataEnt = $("fkData").value;
+        if (!subKey || !dataEnt) {
+          prev.className = "vazio";
+          prev.textContent = "Selecione a amostra e a data de entrega.";
+          $("fkPrint").classList.add("hidden");
+          return;
+        }
+        prev.className = "vazio";
+        prev.textContent = "Gerando a ficha oficial em PDF…";
+        $("fkPrint").classList.add("hidden");
+        try {
+          const n = await gerarRastreabPDF(subKey, dataEnt);
+          if (n > 0) {
+            prev.innerHTML = `✅ Rastreabilidade gerada (${n} amostra(s)) — abriu em nova aba para ` +
+              "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
+              "bloquear o pop-up, permita-o para este site.</span>";
+          } else {
+            prev.className = "vazio";
+            prev.textContent = "Nenhuma amostra desse tipo entregue nessa data.";
+          }
+        } catch (e) {
+          prev.className = "vazio";
+          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
+        }
+        return;
+      }
+      const r = acharRegistro();
       if (!r) {
         prev.className = "vazio";
         prev.textContent = "Nenhum registro encontrado para este ponto e data.";
