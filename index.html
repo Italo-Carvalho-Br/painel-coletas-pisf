@@ -8,6 +8,7 @@
   <!-- Bibliotecas externas (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 
   <style>
     :root {
@@ -1445,7 +1446,55 @@
         pontoDe(r) === ponto && tsParts(r.local_timestamp).key === dataKey) || null;
     }
 
-    $("fkGerar").addEventListener("click", () => {
+    // Coordenadas (pdf-lib, origem inferior-esquerda) por ficha oficial.
+    const FICHAS_COORDS = {"cianobacterias":{"data_coleta":[{"x":98.5,"y":689.7},{"x":98.5,"y":324.0}],"hora_coleta":[{"x":99.2,"y":674.9},{"x":99.2,"y":309.1}],"ponto":[{"x":105.2,"y":615.2},{"x":59.3,"y":249.5}],"cianobacteria":[{"x":108.2,"y":577.8},{"x":108.2,"y":212.0}]},"zooplancton":{"data_coleta":[{"x":93.4,"y":689.7},{"x":93.4,"y":324.0}],"hora_coleta":[{"x":94.1,"y":674.9},{"x":94.1,"y":309.1}],"ponto":[{"x":100.2,"y":615.2},{"x":54.3,"y":249.5}],"zooplancton":[{"x":85.1,"y":577.8},{"x":85.1,"y":212.0}]},"macrofitas":{"data_coleta":[{"x":98.1,"y":680.1},{"x":98.1,"y":352.4}],"hora_coleta":[{"x":98.8,"y":665.3},{"x":98.8,"y":337.5}],"ponto":[{"x":59.0,"y":618.3},{"x":104.8,"y":290.6}],"floristico":[{"x":140.9,"y":572.0},{"x":140.9,"y":244.3}],"biomassa":[{"x":189.7,"y":259.2},{"x":189.7,"y":586.9}]},"sedimentos":{"data_coleta":[{"x":92.8,"y":719.6},{"x":92.8,"y":298.3}],"hora_coleta":[{"x":93.5,"y":704.8},{"x":93.5,"y":283.9}],"ponto":[{"x":98.0,"y":648.1},{"x":55.5,"y":226.2}],"fito_sup":[{"x":232,"y":611.5},{"x":232,"y":189.6}],"fito_fundo":[{"x":232,"y":597.1},{"x":232,"y":175.2}],"sed_margem_quadrado":[{"x":397,"y":560.5},{"x":397,"y":138.6}],"sed_margem_peneira":[{"x":397,"y":545.7},{"x":397,"y":123.8}],"sed_margem_granulo":[{"x":397,"y":531.0},{"x":397,"y":109.0}],"fital":[{"x":397,"y":516.2},{"x":397,"y":94.3}],"sed_fundo_zoob_draga":[{"x":397,"y":501.4},{"x":397,"y":79.5}],"sed_fundo_granulo_draga":[{"x":397,"y":487.0},{"x":397,"y":65.1}]}};
+    const PDF_FICHAS = new Set(["cianobacterias", "zooplancton", "macrofitas", "sedimentos"]);
+
+    function valoresFicha(tipo, r) {
+      const t = tsParts(r.local_timestamp);
+      const base = { data_coleta: t.data, hora_coleta: t.hora, ponto: pontoDe(r) };
+      if (tipo === "cianobacterias")
+        return { ...base, cianobacteria: lacreVal(r, "cianobacterias_polietileno") };
+      if (tipo === "zooplancton")
+        return { ...base, zooplancton: itemVal(r, "zooplancton") };
+      if (tipo === "macrofitas")
+        return { ...base,
+          biomassa: itemVal(r, "biomassa_macrofita_quadrado"),
+          floristico: itemVal(r, "levantamento_floristico") };
+      if (tipo === "sedimentos")
+        return { ...base,
+          fito_sup: lacreVal(r, "fitoplancton_superficie"),
+          fito_fundo: lacreVal(r, "fitoplancton_fundo"),
+          sed_margem_quadrado: lacreVal(r, "sed_margem_zoobentos_quadrado"),
+          sed_margem_peneira: lacreVal(r, "sed_margem_zoobentos_peneira"),
+          sed_margem_granulo: lacreVal(r, "sed_margem_granulometrica"),
+          fital: lacreVal(r, "macroinvertebrados_fital"),
+          sed_fundo_zoob_draga: lacreVal(r, "sed_fundo_zoobentos_draga"),
+          sed_fundo_granulo_draga: lacreVal(r, "sed_fundo_granulometrica_draga") };
+      return base;
+    }
+
+    // Preenche o PDF OFICIAL (sobreposição) e abre em nova aba p/ imprimir/salvar.
+    async function gerarFichaPDF(tipo, r) {
+      const coords = FICHAS_COORDS[tipo] || {};
+      const vals = valoresFicha(tipo, r);
+      const bytes = await fetch(`assets/fichas/${tipo}.pdf`).then(x => x.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const page = pdfDoc.getPages()[0];
+      const azul = PDFLib.rgb(0, 0, 0.6);
+      for (const [k, pts] of Object.entries(coords)) {
+        const v = vals[k];
+        if (v == null || v === "") continue;
+        for (const p of pts) page.drawText(String(v), { x: p.x, y: p.y, size: 10, font, color: azul });
+      }
+      const out = await pdfDoc.save();
+      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    $("fkGerar").addEventListener("click", async () => {
       const tipo = $("fkTipo").value;
       const r = acharRegistro();
       const prev = $("fichaPreview");
@@ -1456,6 +1505,22 @@
         $("fkPrint").classList.add("hidden");
         return;
       }
+      if (PDF_FICHAS.has(tipo)) {
+        prev.className = "vazio";
+        prev.textContent = "Gerando a ficha oficial em PDF…";
+        $("fkPrint").classList.add("hidden");
+        try {
+          await gerarFichaPDF(tipo, r);
+          prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
+            "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
+            "bloquear o pop-up, permita-o para este site.</span>";
+        } catch (e) {
+          prev.className = "vazio";
+          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
+        }
+        return;
+      }
+      // Limnologia e Vetores: por enquanto, visualização em HTML.
       prev.className = "";
       prev.innerHTML = FICHA_RENDER[tipo](r);
       $("fkPrint").classList.remove("hidden");
