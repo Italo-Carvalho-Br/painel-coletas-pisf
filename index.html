@@ -128,6 +128,36 @@
     .hint-inline { font-size: 11px; color: var(--hint); }
     @media (max-width: 640px) { .fgrid { grid-template-columns: 1fr; } }
 
+    /* ---- Fichas (geração para impressão) ---- */
+    .ficha-ctrls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    #fichaPreview { background: #fff; color: #000; margin: 16px auto 0; max-width: 900px;
+      border: 1px solid #bbb; border-radius: 6px; padding: 22px 26px; font-size: 13px; }
+    #fichaPreview.vazio { border-style: dashed; color: var(--hint); text-align: center;
+      padding: 40px; font-size: 14px; }
+    .fk-title { text-align: center; font-weight: 800; font-size: 14px; line-height: 1.35;
+      margin-bottom: 4px; text-transform: uppercase; }
+    .fk-sub { text-align: center; font-size: 12px; margin-bottom: 14px; }
+    .fk-row { display: flex; gap: 18px; flex-wrap: wrap; margin: 3px 0; }
+    .fk-f { margin: 3px 0; }
+    .fk-f b { font-weight: 700; }
+    .fk-sec { margin-top: 14px; font-weight: 800; background: #eef3ef; padding: 5px 8px;
+      border-radius: 4px; text-transform: uppercase; font-size: 12px; }
+    table.fk { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 12px; }
+    table.fk th, table.fk td { border: 1px solid #999; padding: 5px 7px; text-align: center; }
+    table.fk th { background: #f0f4f1; font-weight: 700; }
+    table.fk td.lbl { text-align: left; font-weight: 600; background: #fafafa; }
+    .fk-assin { display: flex; justify-content: space-between; gap: 24px; margin-top: 40px;
+      font-size: 11px; text-align: center; }
+    .fk-assin > div { flex: 1; border-top: 1px solid #000; padding-top: 4px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #fichaPreview, #fichaPreview * { visibility: visible; }
+      #fichaPreview { position: absolute; left: 0; top: 0; width: 100%; max-width: none;
+        margin: 0; border: 0; border-radius: 0; padding: 0; }
+      @page { size: A4 portrait; margin: 12mm; }
+    }
+
     /* ---- Celular ---- */
     @media (max-width: 640px) {
       header { padding: 10px 14px; gap: 8px; }
@@ -188,6 +218,7 @@
         <button class="tab active" id="tabColetas">💧 Coletas</button>
         <button class="tab" id="tabLacres">🧪 Lacres</button>
         <button class="tab" id="tabVetores">🦟 Vetores</button>
+        <button class="tab" id="tabFichas">📄 Fichas</button>
       </div>
 
       <div id="viewColetas">
@@ -307,6 +338,31 @@
           <div class="empty hidden" id="vEmpty">Nenhum registro encontrado.</div>
         </div>
       </div><!-- /viewVetores -->
+
+      <!-- ================= FICHAS (impressão) ================= -->
+      <div id="viewFichas" class="hidden">
+        <div class="toolbar card ficha-ctrls">
+          <div class="field"><label>Ficha</label><br/>
+            <select id="fkTipo">
+              <option value="">— selecione —</option>
+              <option value="limno">Águas e Limnologia</option>
+              <option value="sedimentos">Sedimentos, Zoobentos e Fitoplâncton (UNEB)</option>
+              <option value="cianobacterias">Cianobactérias (UNEB)</option>
+              <option value="macrofitas">Macrófitas (UFPE)</option>
+              <option value="zooplancton">Zooplâncton (UFPE)</option>
+              <option value="vet_aspirador">Vetores — Aspirador</option>
+              <option value="vet_ovitrampa">Vetores — Ovitrampas</option>
+              <option value="vet_shannon">Vetores — Shannon</option>
+            </select>
+          </div>
+          <div class="field"><label>Ponto</label><br/><select id="fkPonto"><option value="">—</option></select></div>
+          <div class="field"><label>Data</label><br/><select id="fkData"><option value="">—</option></select></div>
+          <div class="spacer"></div>
+          <button class="btn small" id="fkGerar">Gerar ficha</button>
+          <button class="btn ghost small hidden" id="fkPrint">🖨️ Imprimir / PDF</button>
+        </div>
+        <div id="fichaPreview" class="vazio">Selecione a ficha, o ponto e a data e clique em “Gerar ficha”.</div>
+      </div><!-- /viewFichas -->
     </main>
 
     <!-- Modal de edição / novo registro (preenchido via JS) -->
@@ -787,9 +843,9 @@
 
     // ---------- Troca de abas (Coletas / Lacres) ----------
     function setTab(aba) {
-      const abas = ["coletas", "lacres", "vetores"];
-      const views = { coletas: "viewColetas", lacres: "viewLacres", vetores: "viewVetores" };
-      const tabs = { coletas: "tabColetas", lacres: "tabLacres", vetores: "tabVetores" };
+      const abas = ["coletas", "lacres", "vetores", "fichas"];
+      const views = { coletas: "viewColetas", lacres: "viewLacres", vetores: "viewVetores", fichas: "viewFichas" };
+      const tabs = { coletas: "tabColetas", lacres: "tabLacres", vetores: "tabVetores", fichas: "tabFichas" };
       for (const a of abas) {
         $(views[a]).classList.toggle("hidden", a !== aba);
         $(tabs[a]).classList.toggle("active", a === aba);
@@ -798,6 +854,7 @@
     $("tabColetas").addEventListener("click", () => setTab("coletas"));
     $("tabLacres").addEventListener("click", () => setTab("lacres"));
     $("tabVetores").addEventListener("click", () => setTab("vetores"));
+    $("tabFichas").addEventListener("click", () => setTab("fichas"));
 
     // ====================================================================
     //  EDIÇÃO / EXCLUSÃO / INSERÇÃO (apenas gestor)
@@ -1333,6 +1390,239 @@
       const stamp = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(wb, `vetores_${vAtivo}_PISF_${stamp}.xlsx`);
     });
+
+    // ====================================================================
+    //  FICHAS — preenchimento automático p/ impressão (Ponto + Data)
+    // ====================================================================
+    const FICHA_SRC = {
+      limno: () => allRecords,
+      sedimentos: () => allSeals,
+      cianobacterias: () => allSeals,
+      macrofitas: () => allSeals,
+      zooplancton: () => allSeals,
+      vet_aspirador: () => allVetor.aspirador,
+      vet_ovitrampa: () => allVetor.ovitrampa,
+      vet_shannon: () => allVetor.shannon,
+    };
+
+    function tsParts(ts) {
+      const d = tsToDate(ts);
+      if (!d) return { data: "", hora: "", key: "" };
+      const p = (n) => String(n).padStart(2, "0");
+      return {
+        data: `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`,
+        hora: `${p(d.getHours())}:${p(d.getMinutes())}`,
+        key: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+      };
+    }
+    const pontoDe = (r) => r.point_label || r.point_id || "";
+
+    function fichaPopularPontos() {
+      const tipo = $("fkTipo").value;
+      const ds = tipo ? FICHA_SRC[tipo]() : [];
+      const pontos = [...new Set(ds.map(pontoDe).filter(Boolean))].sort();
+      $("fkPonto").innerHTML = '<option value="">—</option>' +
+        pontos.map(p => `<option>${esc(p)}</option>`).join("");
+      $("fkData").innerHTML = '<option value="">—</option>';
+    }
+    function fichaPopularDatas() {
+      const tipo = $("fkTipo").value, ponto = $("fkPonto").value;
+      const ds = tipo ? FICHA_SRC[tipo]() : [];
+      const datas = [...new Map(
+        ds.filter(r => pontoDe(r) === ponto)
+          .map(r => { const t = tsParts(r.local_timestamp); return [t.key, t.data]; })
+      ).entries()].filter(([k]) => k).sort((a, b) => b[0].localeCompare(a[0]));
+      $("fkData").innerHTML = '<option value="">—</option>' +
+        datas.map(([k, d]) => `<option value="${k}">${esc(d)}</option>`).join("");
+    }
+    $("fkTipo").addEventListener("change", fichaPopularPontos);
+    $("fkPonto").addEventListener("change", fichaPopularDatas);
+
+    function acharRegistro() {
+      const tipo = $("fkTipo").value, ponto = $("fkPonto").value, dataKey = $("fkData").value;
+      if (!tipo || !ponto || !dataKey) return null;
+      return (FICHA_SRC[tipo]() || []).find(r =>
+        pontoDe(r) === ponto && tsParts(r.local_timestamp).key === dataKey) || null;
+    }
+
+    $("fkGerar").addEventListener("click", () => {
+      const tipo = $("fkTipo").value;
+      const r = acharRegistro();
+      const prev = $("fichaPreview");
+      if (!tipo) { alert("Selecione a ficha."); return; }
+      if (!r) {
+        prev.className = "vazio";
+        prev.textContent = "Nenhum registro encontrado para este ponto e data.";
+        $("fkPrint").classList.add("hidden");
+        return;
+      }
+      prev.className = "";
+      prev.innerHTML = FICHA_RENDER[tipo](r);
+      $("fkPrint").classList.remove("hidden");
+    });
+    $("fkPrint").addEventListener("click", () => window.print());
+
+    // ---------- Renderizadores ----------
+    const vazio = (v) => (v === "" || v == null) ? "______" : esc(v);
+    const campoLinha = (rot, val) => `<div class="fk-f"><b>${esc(rot)}:</b> ${vazio(val)}</div>`;
+
+    function cabecalho(titulo, sub) {
+      return `<div class="fk-title">${esc(titulo)}</div>` +
+        (sub ? `<div class="fk-sub">${esc(sub)}</div>` : "");
+    }
+    function assinaturas(a, b) {
+      return `<div class="fk-assin"><div>${esc(a)}</div><div>${esc(b)}</div></div>`;
+    }
+    function blocoEntrega(r) {
+      const t = tsParts(r.local_timestamp);
+      return `<div class="fk-row">
+          ${campoLinha("Data da coleta", t.data)} ${campoLinha("Hora da coleta", t.hora)}
+        </div>
+        <div class="fk-row">
+          ${campoLinha("Data da entrega", "")} ${campoLinha("Hora da entrega", "")}
+        </div>
+        ${campoLinha("Ponto da coleta", pontoDe(r))}`;
+    }
+
+    function renderLimno(r) {
+      const medTable = (sec) => {
+        const g = (k) => sec === "sup" ? param(r, k) : paramProf(r, k);
+        return `<table class="fk"><tr>
+            <th>pH</th><th>Cond. (mS/cm)</th><th>Turb. (NTU)</th><th>OD (mg/L)</th>
+            <th>T (°C)</th><th>Salin. (%)</th><th>STD (g/L)</th><th>ORP (mV)</th></tr><tr>
+            <td>${vazio(g("ph_valor"))}</td><td>${vazio(g("cond_valor"))}</td>
+            <td>${vazio(g("turb_valor"))}</td><td>${vazio(g("od_valor"))}</td>
+            <td>${vazio(g("temp_valor"))}</td><td>${vazio(g("sal_valor"))}</td>
+            <td>${vazio(g("std_valor"))}</td><td>${vazio(g("orp_valor"))}</td></tr></table>`;
+      };
+      const sup = secao(r, "superficial"), prof = secao(r, "profundidade");
+      const temProf = temColetaProfunda(r);
+      return cabecalho(
+        "Ficha de Coleta — Monitoramento de Qualidade da Água e Limnologia",
+        r.campanha || "") +
+        `<div class="fk-row">${campoLinha("Ponto", pontoDe(r))} ${campoLinha("Data", tsParts(r.local_timestamp).data)}</div>
+        <div class="fk-sec">Caracterização</div>
+        ${campoLinha("Tempo", ambiente(r, "tempo"))}
+        ${campoLinha("Ventos", ambiente(r, "ventos"))}
+        ${campoLinha("Margens", ambiente(r, "margens"))}
+        ${campoLinha("Aparência da água", ambiente(r, "aparencia_agua"))}
+        ${campoLinha("Cor da água", ambiente(r, "cor_agua"))}
+        ${campoLinha("Macrófitas", ambiente(r, "macrofitas"))}
+        ${campoLinha("Outros registros", ambiente(r, "outros_registros"))}
+        <div class="fk-sec">Coleta Superficial</div>
+        <div class="fk-row">${campoLinha("Hora", sup.hora ?? "")} ${campoLinha("Profundidade (m)", param(r, "prof_valor"))} ${campoLinha("Disco Secchi (m)", param(r, "secchi_valor"))}</div>
+        ${medTable("sup")}
+        ${temProf ? `<div class="fk-sec">Coleta em Profundidade</div>
+          <div class="fk-row">${campoLinha("Hora", prof.hora ?? "")} ${campoLinha("Profundidade (m)", paramProf(r, "prof_valor"))}</div>
+          ${medTable("prof")}` : ""}
+        <div class="fk-sec">Observações</div>
+        <div class="fk-f">${observacoes(r) ? esc(observacoes(r)) : "—"}</div>`;
+    }
+
+    function tabelaLacres(r, linhas) {
+      return `<table class="fk">${linhas.map(([lbl, k]) =>
+        `<tr><td class="lbl">${esc(lbl)}</td><td>${vazio(lacreVal(r, k))}</td></tr>`).join("")}</table>`;
+    }
+
+    function renderSedimentos(r) {
+      return cabecalho("Ficha de Entrega de Amostras — UNEB",
+        "Amostras de Sedimentos, Zoobentos e Fitoplâncton") +
+        blocoEntrega(r) +
+        `<div class="fk-sec">Fitoplâncton</div>` +
+        tabelaLacres(r, [
+          ["Fitoplâncton — superfície", "fitoplancton_superficie"],
+          ["Fitoplâncton — fundo", "fitoplancton_fundo"],
+        ]) +
+        `<div class="fk-sec">Sedimentos e Zoobentos</div>` +
+        tabelaLacres(r, [
+          ["Sedimento de margem — zoobentos (quadrado)", "sed_margem_zoobentos_quadrado"],
+          ["Sedimento de margem — zoobentos qualitativo (peneira)", "sed_margem_zoobentos_peneira"],
+          ["Sedimento de margem — análise granulométrica", "sed_margem_granulometrica"],
+          ["Macroinvertebrados associados a macrófitas (FITAL)", "macroinvertebrados_fital"],
+          ["Sedimento de fundo — zoobentos (draga)", "sed_fundo_zoobentos_draga"],
+          ["Sedimento de fundo — análise granulométrica (draga)", "sed_fundo_granulometrica_draga"],
+        ]) +
+        assinaturas("Representante do Consórcio Gestor Ambiental", "Representante da UNEB");
+    }
+
+    function renderCianob(r) {
+      return cabecalho("Ficha de Entrega de Amostras — UNEB", "Amostras de Cianobactérias") +
+        blocoEntrega(r) +
+        `<div class="fk-sec">Cianobactérias</div>` +
+        tabelaLacres(r, [["Cianobactérias (polietileno 5.000 mL)", "cianobacterias_polietileno"]]) +
+        assinaturas("Representante do Consórcio Gestor Ambiental", "Representante da UNEB");
+    }
+
+    function tabelaItens(r, linhas) {
+      return `<table class="fk">${linhas.map(([lbl, k]) =>
+        `<tr><td class="lbl">${esc(lbl)}</td><td>${vazio(itemVal(r, k))}</td></tr>`).join("")}</table>`;
+    }
+
+    function renderMacrofitas(r) {
+      return cabecalho("Ficha de Entrega de Amostras — UFPE", "Amostras de Macrófitas") +
+        blocoEntrega(r) +
+        `<div class="fk-sec">Macrófitas</div>` +
+        tabelaItens(r, [
+          ["Biomassa de macrófita (quadrado)", "biomassa_macrofita_quadrado"],
+          ["Levantamento florístico", "levantamento_floristico"],
+        ]) +
+        assinaturas("Representante do Consórcio Gestor Ambiental", "Representante da UFPE");
+    }
+
+    function renderZoopl(r) {
+      return cabecalho("Ficha de Entrega de Amostras — UFPE", "Amostras de Zooplâncton") +
+        blocoEntrega(r) +
+        `<div class="fk-sec">Zooplâncton</div>` +
+        tabelaItens(r, [["Zooplâncton", "zooplancton"]]) +
+        assinaturas("Representante do Consórcio Gestor Ambiental", "Representante da UFPE");
+    }
+
+    function caracTabela(r) {
+      const c = caracCols(r);
+      const linhas = Object.entries(c).filter(([, v]) => v !== "" && v != null);
+      if (!linhas.length) return "<div class='fk-f'>—</div>";
+      return `<table class="fk">${linhas.map(([k, v]) =>
+        `<tr><td class="lbl">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
+    }
+
+    function renderVetAspirador(r) {
+      return cabecalho("Vetores e Hospedeiros — Aspirador Entomológico", r.campanha || "") +
+        `<div class="fk-row">${campoLinha("Ponto", pontoDe(r))} ${campoLinha("Data", tsParts(r.local_timestamp).data)}</div>
+        <div class="fk-row">${campoLinha("Hora início", r.hora_inicio)} ${campoLinha("Hora término", r.hora_termino)}</div>
+        <div class="fk-row">${campoLinha("Temp. mín (°C)", r.temp_min)} ${campoLinha("Temp. máx (°C)", r.temp_max)} ${campoLinha("Umidade (%)", r.umidade)} ${campoLinha("Chuva", sn(r.chuva))}</div>
+        <div class="fk-sec">Caracterização geral da área</div>${caracTabela(r)}
+        <div class="fk-sec">Observações</div><div class="fk-f">${r.observacoes ? esc(r.observacoes) : "—"}</div>`;
+    }
+    function renderVetOvitrampa(r) {
+      return cabecalho("Vetores e Hospedeiros — Ovitrampa", r.campanha || "") +
+        `<div class="fk-row">${campoLinha("Armadilha", r.armadilha)} ${campoLinha("Ponto", pontoDe(r))}</div>
+        <div class="fk-row">${campoLinha("Instalação", dthr(r.instalacao_data, r.instalacao_hora))} ${campoLinha("Retirada", dthr(r.retirada_data, r.retirada_hora))}</div>
+        <div class="fk-row">${campoLinha("Ocorrência", r.retirada_ocorrencia)} ${campoLinha("Estado", estadoLabel(r.estado))}</div>
+        <div class="fk-row">${campoLinha("Temp. mín (°C)", r.temp_min)} ${campoLinha("Temp. máx (°C)", r.temp_max)} ${campoLinha("Umidade (%)", r.umidade)} ${campoLinha("Chuva", sn(r.chuva))}</div>
+        <div class="fk-sec">Caracterização geral da área</div>${caracTabela(r)}
+        <div class="fk-sec">Observações</div>
+        <div class="fk-f"><b>Instalação:</b> ${r.observacoes_instalacao ? esc(r.observacoes_instalacao) : "—"}</div>
+        <div class="fk-f"><b>Retirada:</b> ${r.retirada_obs ? esc(r.retirada_obs) : "—"}</div>`;
+    }
+    function renderVetShannon(r) {
+      return cabecalho("Vetores e Hospedeiros — Shannon Adaptada", r.campanha || "") +
+        `<div class="fk-row">${campoLinha("Ponto", pontoDe(r))} ${campoLinha("Data", tsParts(r.local_timestamp).data)}</div>
+        <div class="fk-row">${campoLinha("Hora início", r.hora_inicio)} ${campoLinha("Hora término", r.hora_termino)} ${campoLinha("Fase lunar", r.fase_lunar)}</div>
+        <div class="fk-row">${campoLinha("Temp. mín (°C)", r.temp_min)} ${campoLinha("Temp. máx (°C)", r.temp_max)} ${campoLinha("Umidade (%)", r.umidade)} ${campoLinha("Chuva", sn(r.chuva))}</div>
+        <div class="fk-sec">Caracterização geral da área</div>${caracTabela(r)}
+        <div class="fk-sec">Observações</div><div class="fk-f">${r.observacoes ? esc(r.observacoes) : "—"}</div>`;
+    }
+
+    const FICHA_RENDER = {
+      limno: renderLimno,
+      sedimentos: renderSedimentos,
+      cianobacterias: renderCianob,
+      macrofitas: renderMacrofitas,
+      zooplancton: renderZoopl,
+      vet_aspirador: renderVetAspirador,
+      vet_ovitrampa: renderVetOvitrampa,
+      vet_shannon: renderVetShannon,
+    };
   </script>
 </body>
 </html>
