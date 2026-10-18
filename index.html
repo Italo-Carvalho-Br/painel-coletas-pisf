@@ -1494,6 +1494,51 @@
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
 
+    // Ficha de Limnologia: marca as opções da caracterização + tabelas HORIBA.
+    const LIMNO_COORDS = {"labels":{"ponto":[80.1,762.4],"data":[74.4,742.2],"sup_prof":[132.9,425.1],"sup_secchi":[382.0,425.1],"prof_prof":[132.9,283.4],"sup_hora":[507,444.8],"prof_hora":[507,303.0]},"params":{"sup":{"ph":[64,336.9],"cond":[123,336.9],"turb":[185,336.9],"od":[258,336.9],"temp":[322,336.9],"sal":[382,336.9],"std":[450,336.9],"orp":[512,336.9]},"prof":{"ph":[64,191.9],"cond":[123,191.9],"turb":[185,191.9],"od":[258,191.9],"temp":[322,191.9],"sal":[382,191.9],"std":[450,191.9],"orp":[512,191.9]}},"marks":{"tempo":{"Chuvoso":[109.2,682.8],"Nublado":[173.3,682.8],"Ensolarado":[231.6,682.8]},"ventos":{"Intensos":[365.3,682.8],"Moderados":[422.6,682.8],"Fracos":[497.7,682.8]},"margens":{"Ocupação humana":[115.0,651.2],"Cultura irrigada":[175.7,651.2],"Animais de pastagem":[231.4,651.2],"Banhistas":[298.8,644.0],"Lavagem de roupa":[357.4,651.2],"Bombas de captação particulares":[433.7,651.6]},"aparencia_agua":{"Barrenta":[140.8,605.6],"Transparente":[258.5,605.6],"Transparente com materiais em decomposição":[379.0,612.8]},"cor_agua":{"Esverdeada":[134.7,566.7],"Amarelo-esverdeada":[242.3,566.7],"Pardacenta":[391.0,566.7],"Escura":[497.6,566.2]},"macrofitas":{"Submersas enraizadas":[110.9,527.8],"Flutuantes":[225.8,527.3],"Emersa com folha flutuante":[324.6,535.0],"Emersa não enraizada":[431.1,527.8]},"outros_registros":{"Mortandade de peixes":[110.3,485.6],"Vasilhame de agrotóxico":[233.7,485.6],"Salga de peixe":[365.4,492.3],"Lançamento de esgoto bruto":[420.5,500.7],"Presença de odor":[491.7,492.3]}},"obs":[48,143]};
+
+    const brn = (v) => (v == null || v === "") ? "" : String(v).replace(".", ",");
+
+    async function gerarLimnoPDF(r) {
+      const C = LIMNO_COORDS;
+      const bytes = await fetch("assets/fichas/limnologia.pdf").then(x => x.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const page = pdfDoc.getPages()[0];
+      const azul = PDFLib.rgb(0, 0, 0.6), vermelho = PDFLib.rgb(0.8, 0, 0);
+      const sup = secao(r, "superficial"), prof = secao(r, "profundidade");
+      const draw = (xy, t, size = 10, color = azul) => {
+        if (t == null || t === "" || !xy) return;
+        page.drawText(String(t), { x: xy[0], y: xy[1], size, font, color });
+      };
+      const PARS = ["ph", "cond", "turb", "od", "temp", "sal", "std", "orp"];
+      draw(C.labels.ponto, pontoDe(r));
+      draw(C.labels.data, tsParts(r.local_timestamp).data);
+      draw(C.labels.sup_hora, sup.hora || "");
+      draw(C.labels.sup_prof, brn(param(r, "prof_valor")));
+      draw(C.labels.sup_secchi, brn(param(r, "secchi_valor")));
+      for (const k of PARS) draw(C.params.sup[k], brn(param(r, k + "_valor")));
+      if (temColetaProfunda(r)) {
+        draw(C.labels.prof_hora, prof.hora || "");
+        draw(C.labels.prof_prof, brn(paramProf(r, "prof_valor")));
+        for (const k of PARS) draw(C.params.prof[k], brn(paramProf(r, k + "_valor")));
+      }
+      const amb = secao(r, "ambiente");
+      for (const g of Object.keys(C.marks)) {
+        const sel = amb[g];
+        if (sel == null) continue;
+        for (const v of (Array.isArray(sel) ? sel : [sel])) {
+          const xy = C.marks[g][v];
+          if (xy) page.drawText("X", { x: xy[0], y: xy[1], size: 11, font, color: vermelho });
+        }
+      }
+      draw(C.obs, observacoes(r));
+      const out = await pdfDoc.save();
+      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
     $("fkGerar").addEventListener("click", async () => {
       const tipo = $("fkTipo").value;
       const r = acharRegistro();
@@ -1505,12 +1550,13 @@
         $("fkPrint").classList.add("hidden");
         return;
       }
-      if (PDF_FICHAS.has(tipo)) {
+      if (PDF_FICHAS.has(tipo) || tipo === "limno") {
         prev.className = "vazio";
         prev.textContent = "Gerando a ficha oficial em PDF…";
         $("fkPrint").classList.add("hidden");
         try {
-          await gerarFichaPDF(tipo, r);
+          if (tipo === "limno") await gerarLimnoPDF(r);
+          else await gerarFichaPDF(tipo, r);
           prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
             "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
             "bloquear o pop-up, permita-o para este site.</span>";
