@@ -1,5 +1,16 @@
 # ===== Painel de Coletas — PISF =====
 
+# Cache: sempre revalidar o HTML e os PDFs das fichas, para que o navegador
+# nunca sirva uma versao antiga do painel/ficha depois de um deploy.
+<IfModule mod_headers.c>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache, must-revalidate, max-age=0"
+  </FilesMatch>
+  <FilesMatch "\.pdf$">
+    Header set Cache-Control "no-cache, must-revalidate, max-age=0"
+  </FilesMatch>
+</IfModule>
+
 RewriteEngine On
 
 # Força HTTPS
