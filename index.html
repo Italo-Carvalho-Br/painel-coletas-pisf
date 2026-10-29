@@ -1652,9 +1652,9 @@
 
       draw(L.ponto, pontoDe(r));
       if (sub === "ovitrampa") {
-        draw(L.instal_data, r.instalacao_data);
+        draw(L.instal_data, brDate(r.instalacao_data));
         draw(L.instal_hora, r.instalacao_hora);
-        draw(L.retirada_data, r.retirada_data);
+        draw(L.retirada_data, brDate(r.retirada_data));
         draw(L.retirada_hora, r.retirada_hora);
       } else {
         draw(L.data, t.data);
