@@ -91,6 +91,16 @@
     .gestor-only { display: none; }
     body.is-gestor td.gestor-only, body.is-gestor th.gestor-only { display: table-cell; }
     body.is-gestor .gestor-only.ctrl { display: inline-flex; }
+    /* Coluna "Ações" travada à direita: não some ao rolar a tabela na horizontal,
+       deixando editar/excluir sempre ao alcance do operador. */
+    body.is-gestor th.gestor-only,
+    body.is-gestor td.gestor-only {
+      position: sticky; right: 0;
+      box-shadow: -6px 0 6px -6px rgba(0,0,0,.18);
+    }
+    body.is-gestor th.gestor-only { z-index: 4; }
+    body.is-gestor td.gestor-only { z-index: 2; background: var(--surface); }
+    body.is-gestor tbody tr:hover td.gestor-only { background: #FAFDFB; }
     .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
       padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
     .rowbtn:hover { background: #F2F6F3; }
