@@ -351,8 +351,7 @@
               <option value="cianobacterias">Cianobactérias (UNEB)</option>
               <option value="macrofitas">Macrófitas (UFPE)</option>
               <option value="zooplancton">Zooplâncton (UFPE)</option>
-              <option value="vet_aspirador">Vetores — Aspirador</option>
-              <option value="vet_ovitrampa">Vetores — Ovitrampas</option>
+              <option value="vet_campo">Vetores — Aspirador + Ovitrampas (folha de campo)</option>
               <option value="vet_shannon">Vetores — Shannon</option>
               <option value="rastreabilidade">Rastreabilidade das Amostras</option>
             </select>
@@ -1415,8 +1414,7 @@
       cianobacterias: () => allSeals,
       macrofitas: () => allSeals,
       zooplancton: () => allSeals,
-      vet_aspirador: () => allVetor.aspirador,
-      vet_ovitrampa: () => allVetor.ovitrampa,
+      vet_campo: () => [...allVetor.aspirador, ...allVetor.ovitrampa],
       vet_shannon: () => allVetor.shannon,
     };
 
@@ -1474,6 +1472,17 @@
         $("fkData").innerHTML = '<option value="">—</option>';
         return;
       }
+      if (VET_FICHAS.has(tipo)) {
+        // Vetores: agrupa por Ponto + Campanha (datas variam na semana).
+        $("fkPontoLab").textContent = "Ponto";
+        $("fkDataLab").textContent = "Campanha";
+        const ds = FICHA_SRC[tipo]();
+        const pontos = [...new Set(ds.map(pontoDe).filter(Boolean))].sort();
+        $("fkPonto").innerHTML = '<option value="">—</option>' +
+          pontos.map(p => `<option>${esc(p)}</option>`).join("");
+        $("fkData").innerHTML = '<option value="">—</option>';
+        return;
+      }
       $("fkPontoLab").textContent = "Ponto";
       $("fkDataLab").textContent = "Data";
       const ds = tipo ? FICHA_SRC[tipo]() : [];
@@ -1492,6 +1501,15 @@
           .sort((a, b) => b.localeCompare(a)) : [];
         $("fkData").innerHTML = '<option value="">—</option>' +
           datas.map(d => `<option value="${d}">${esc(brDate(d))}</option>`).join("");
+        return;
+      }
+      if (VET_FICHAS.has(tipo)) {
+        const ponto = $("fkPonto").value;
+        const ds = FICHA_SRC[tipo]();
+        const camps = [...new Set(ds.filter(r => pontoDe(r) === ponto)
+          .map(r => r.campanha || "").filter(Boolean))].sort();
+        $("fkData").innerHTML = '<option value="">—</option>' +
+          camps.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
         return;
       }
       const ponto = $("fkPonto").value;
@@ -1609,16 +1627,12 @@
 
     // Fichas de Vetores (vetores.pdf): aspirador+ovitrampa na pág.0, shannon na pág.1.
     const VET_COORDS = {"aspirador":{"page":0,"labels":{"ponto":[85.1,764.8],"data":[31,683.9],"hora_inicio":[89,683.9],"hora_termino":[142,683.9],"temp_min":[210,683.9],"temp_max":[267,683.9],"umidade":[308,683.9]},"chuva":{"Sim":[370.0,691.0],"Não":[426.6,691.0]},"carac":{"vegetacao":{"Presente":[73.5,649.2],"Ausente":[74.7,627.0]},"vegetacao_condicao":{"Verde":[136.3,649.2],"Seca":[138.9,627.0]},"residuos":{"Sim":[255.3,649.2],"Não":[254.5,627.0]},"ocupacao":{"Sim":[349.5,649.2],"Não":[349.5,627.0]},"recreacao":{"Pesca":[406.8,627.0]},"animais_pastagem":{"Sim":[62.7,587.2],"Não":[62.7,554.2]},"animais":{"Caprinos":[234.7,587.2],"Bovinos":[292.2,587.2],"Equinos":[234.8,554.2]},"vestigios":{"Fezes":[194.5,587.2],"Pegadas":[189.4,554.2]},"estrada":{"Sim":[83.2,514.0],"Não":[82.5,491.0]},"veiculos":{"Sim":[198.0,514.0],"Não":[197.2,491.0]},"veiculos_tipos":{"Carro":[251.8,514.0],"Caminhão":[300.6,514.0],"Moto":[251.8,491.0]},"vento":{"Fraco":[406.9,514.0],"Moderado":[406.8,491.0]}}},"ovitrampa":{"page":0,"labels":{"ponto":[85.1,764.8],"instal_data":[24,304.9],"instal_hora":[82,304.9],"retirada_data":[143,304.9],"retirada_hora":[200,304.9],"temp_min":[40,267.9],"temp_max":[97,267.9],"umidade":[280,304.9]},"chuva":{"Sim":[370.0,304.4],"Não":[426.6,304.4]},"carac":{"vegetacao":{"Presente":[73.5,226.0],"Ausente":[74.7,203.8]},"vegetacao_condicao":{"Verde":[136.3,226.0],"Seca":[138.9,203.8]},"residuos":{"Sim":[255.3,226.0],"Não":[254.5,203.8]},"ocupacao":{"Sim":[349.5,226.0],"Não":[349.5,203.8]},"recreacao":{"Pesca":[406.8,203.8]},"animais_pastagem":{"Sim":[62.7,163.9],"Não":[62.7,130.9]},"animais":{"Caprinos":[120.1,163.9],"Bovinos":[177.4,163.9],"Equinos":[120.0,130.9]},"vestigios":{"Fezes":[309.3,163.9],"Pegadas":[304.1,130.9]},"estrada":{"Sim":[83.2,90.7],"Não":[82.5,67.8]},"veiculos":{"Sim":[198.0,90.7],"Não":[197.2,67.8]},"veiculos_tipos":{"Carro":[251.8,90.7],"Caminhão":[300.6,90.7],"Moto":[251.8,67.8]},"vento":{"Fraco":[406.9,90.7],"Moderado":[406.8,67.8]}}},"shannon":{"page":1,"labels":{"ponto":[85.1,740.8],"data":[31,659.9],"hora_inicio":[89,659.9],"hora_termino":[142,659.9],"fase_lunar":[407.1,703.6],"temp_min":[210,659.9],"temp_max":[267,659.9],"umidade":[308,659.9]},"chuva":{"Sim":[370.0,667.0],"Não":[426.6,667.0]},"carac":{"vegetacao":{"Presente":[73.5,610.2],"Ausente":[74.7,587.6]},"vegetacao_condicao":{"Verde":[136.3,610.2],"Seca":[138.9,587.6]},"residuos":{"Sim":[255.3,610.2],"Não":[254.5,587.6]},"ocupacao":{"Sim":[349.5,610.2],"Não":[349.5,587.6]},"recreacao":{"Pesca":[406.8,587.6]},"animais_pastagem":{"Sim":[62.7,532.0],"Não":[62.7,514.4]},"animais":{"Caprinos":[120.1,532.0],"Bovinos":[177.4,532.0],"Equinos":[120.0,514.4]},"vestigios":{"Fezes":[309.3,532.0],"Pegadas":[304.1,514.4]},"estrada":{"Sim":[83.2,473.9],"Não":[82.5,457.9]},"veiculos":{"Sim":[198.0,473.9],"Não":[197.2,457.9]},"veiculos_tipos":{"Carro":[251.8,473.9],"Caminhão":[300.6,473.9],"Moto":[251.8,457.9]},"vento":{"Fraco":[406.9,473.9],"Moderado":[406.8,457.9]}}}};
-    const VET_FICHAS = new Set(["vet_aspirador", "vet_ovitrampa", "vet_shannon"]);
+    const VET_FICHAS = new Set(["vet_campo", "vet_shannon"]);
 
-    async function gerarVetPDF(tipo, r) {
-      const sub = { vet_aspirador: "aspirador", vet_ovitrampa: "ovitrampa", vet_shannon: "shannon" }[tipo];
-      const C = VET_COORDS[sub], L = C.labels;
-      const bytes = await fetch("assets/fichas/vetores.pdf").then(x => x.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-      const page = pdfDoc.getPages()[C.page];
+    // Preenche uma seção da folha de Vetores (aspirador | ovitrampa | shannon).
+    function preencherVetSecao(page, C, r, font, sub) {
       const azul = PDFLib.rgb(0, 0, 0.6), vermelho = PDFLib.rgb(0.8, 0, 0);
+      const L = C.labels;
       const draw = (xy, v, size = 10, color = azul) => {
         if (v == null || v === "" || !xy) return;
         page.drawText(String(v), { x: xy[0], y: xy[1], size, font, color });
@@ -1653,14 +1667,47 @@
           : (Array.isArray(sel) ? sel : [sel]);
         for (const k of keys) mk(C.carac[g][k]);
       }
+    }
 
-      // mantém apenas a página da atividade escolhida
-      for (let i = pdfDoc.getPageCount() - 1; i >= 0; i--) if (i !== C.page) pdfDoc.removePage(i);
+    // Folha de campo de Vetores por Ponto + Campanha.
+    //  - vet_campo: aspiração matinal (Aspirador) + Ovitrampas na MESMA página 0.
+    //  - vet_shannon: Shannon na página 1.
+    // As datas de aspiração e de instalação/retirada podem variar na semana de
+    // monitoramento, por isso o agrupamento é por ponto + número da campanha.
+    async function gerarVetPDF(tipo, ponto, campanha) {
+      const achar = (arr) => (arr || []).find(
+        r => pontoDe(r) === ponto && (r.campanha || "") === campanha) || null;
+
+      const bytes = await fetch("assets/fichas/vetores.pdf").then(x => x.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+
+      let keepPage = 0, usados = 0;
+      if (tipo === "vet_shannon") {
+        const r = achar(allVetor.shannon);
+        if (!r) return 0;
+        keepPage = VET_COORDS.shannon.page;
+        preencherVetSecao(pdfDoc.getPages()[keepPage], VET_COORDS.shannon, r, font, "shannon");
+        usados = 1;
+      } else {
+        // vet_campo: aspirador + ovitrampa na mesma página 0 (folha única).
+        const asp = achar(allVetor.aspirador);
+        const ovi = achar(allVetor.ovitrampa);
+        if (!asp && !ovi) return 0;
+        keepPage = 0;
+        const page0 = pdfDoc.getPages()[0];
+        if (asp) { preencherVetSecao(page0, VET_COORDS.aspirador, asp, font, "aspirador"); usados++; }
+        if (ovi) { preencherVetSecao(page0, VET_COORDS.ovitrampa, ovi, font, "ovitrampa"); usados++; }
+      }
+
+      // mantém apenas a página usada
+      for (let i = pdfDoc.getPageCount() - 1; i >= 0; i--) if (i !== keepPage) pdfDoc.removePage(i);
 
       const out = await pdfDoc.save();
       const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return usados;
     }
 
     // Ficha de Rastreabilidade (rastreabilidade.pdf): cabeçalho + tabela de amostras.
@@ -1748,6 +1795,34 @@
         }
         return;
       }
+      if (VET_FICHAS.has(tipo)) {
+        // Vetores: gera por Ponto + Campanha (folha única p/ aspirador+ovitrampa).
+        const ponto = $("fkPonto").value, campanha = $("fkData").value;
+        if (!ponto || !campanha) {
+          prev.className = "vazio";
+          prev.textContent = "Selecione o ponto e a campanha.";
+          $("fkPrint").classList.add("hidden");
+          return;
+        }
+        prev.className = "vazio";
+        prev.textContent = "Gerando a ficha oficial em PDF…";
+        $("fkPrint").classList.add("hidden");
+        try {
+          const n = await gerarVetPDF(tipo, ponto, campanha);
+          if (n > 0) {
+            prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
+              "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
+              "bloquear o pop-up, permita-o para este site.</span>";
+          } else {
+            prev.className = "vazio";
+            prev.textContent = "Nenhum registro de vetores para este ponto e campanha.";
+          }
+        } catch (e) {
+          prev.className = "vazio";
+          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
+        }
+        return;
+      }
       const r = acharRegistro();
       if (!r) {
         prev.className = "vazio";
@@ -1755,13 +1830,12 @@
         $("fkPrint").classList.add("hidden");
         return;
       }
-      if (PDF_FICHAS.has(tipo) || tipo === "limno" || VET_FICHAS.has(tipo)) {
+      if (PDF_FICHAS.has(tipo) || tipo === "limno") {
         prev.className = "vazio";
         prev.textContent = "Gerando a ficha oficial em PDF…";
         $("fkPrint").classList.add("hidden");
         try {
           if (tipo === "limno") await gerarLimnoPDF(r);
-          else if (VET_FICHAS.has(tipo)) await gerarVetPDF(tipo, r);
           else await gerarFichaPDF(tipo, r);
           prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
             "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
