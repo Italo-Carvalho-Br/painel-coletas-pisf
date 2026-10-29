@@ -1541,9 +1541,47 @@
         pontoDe(r) === ponto && tsParts(r.local_timestamp).key === dataKey) || null;
     }
 
-    // Coordenadas (pdf-lib, origem inferior-esquerda) por ficha oficial.
-    const FICHAS_COORDS = {"cianobacterias":{"data_coleta":[{"x":98.5,"y":689.7},{"x":98.5,"y":324.0}],"hora_coleta":[{"x":99.2,"y":674.9},{"x":99.2,"y":309.1}],"data_entrega":[{"x":104.3,"y":652.3},{"x":104.3,"y":286.5}],"ponto":[{"x":105.2,"y":615.2},{"x":59.3,"y":249.5}],"cianobacteria":[{"x":108.2,"y":577.8},{"x":108.2,"y":212.0}]},"zooplancton":{"data_coleta":[{"x":93.4,"y":689.7},{"x":93.4,"y":324.0}],"hora_coleta":[{"x":94.1,"y":674.9},{"x":94.1,"y":309.1}],"data_entrega":[{"x":99.3,"y":652.3},{"x":99.3,"y":286.5}],"ponto":[{"x":100.2,"y":615.2},{"x":54.3,"y":249.5}],"zooplancton":[{"x":85.1,"y":577.8},{"x":85.1,"y":212.0}]},"macrofitas":{"data_coleta":[{"x":98.1,"y":680.1},{"x":98.1,"y":352.4}],"hora_coleta":[{"x":98.8,"y":665.3},{"x":98.8,"y":337.5}],"data_entrega":[{"x":106.0,"y":649.1},{"x":106.0,"y":321.3}],"ponto":[{"x":59.0,"y":618.3},{"x":104.8,"y":290.6}],"biomassa":[{"x":189.7,"y":586.9},{"x":189.7,"y":259.2}],"floristico":[{"x":140.9,"y":244.3},{"x":140.9,"y":572.0}]},"sedimentos":{"data_coleta":[{"x":92.8,"y":719.6},{"x":92.8,"y":298.3}],"hora_coleta":[{"x":93.5,"y":704.8},{"x":93.5,"y":283.9}],"data_entrega":[{"x":98.7,"y":684.0},{"x":98.7,"y":262.0}],"ponto":[{"x":98.0,"y":648.1},{"x":55.5,"y":226.2}],"fito_sup":[{"x":232,"y":611.5},{"x":232,"y":189.6}],"fito_fundo":[{"x":232,"y":597.1},{"x":232,"y":175.2}],"sed_margem_quadrado":[{"x":397,"y":560.5},{"x":397,"y":138.6}],"sed_margem_peneira":[{"x":397,"y":545.7},{"x":397,"y":123.8}],"sed_margem_granulo":[{"x":397,"y":531.0},{"x":397,"y":109.0}],"fital":[{"x":397,"y":516.2},{"x":397,"y":94.3}],"sed_fundo_zoob_draga":[{"x":397,"y":501.4},{"x":397,"y":79.5}],"sed_fundo_granulo_draga":[{"x":397,"y":487.0},{"x":397,"y":65.1}]}};
+    // Fichas oficiais com campos de formulário (AcroForm): o PDF tem os campos
+    // posicionados na grade real, o painel só preenche por NOME e "achata". Isso
+    // garante alinhamento perfeito na impressão (sem coordenadas fixas frágeis).
+    //
+    // MARKS_*: mapa grupo -> { valorNoApp: nomeDoCheckbox } das caracterizações.
+    const MARKS_AGUAS = {"tempo":{"Chuvoso":"mk_tempo_0","Nublado":"mk_tempo_1","Ensolarado":"mk_tempo_2"},"ventos":{"Intensos":"mk_ventos_0","Moderados":"mk_ventos_1","Fracos":"mk_ventos_2"},"margens":{"Ocupação humana":"mk_margens_0","Cultura irrigada":"mk_margens_1","Animais de pastagem":"mk_margens_2","Banhistas":"mk_margens_3","Lavagem de roupa":"mk_margens_4","Bombas de captação particulares":"mk_margens_5"},"aparencia_agua":{"Barrenta":"mk_aparencia_agua_0","Transparente":"mk_aparencia_agua_1","Transparente com materiais em decomposição":"mk_aparencia_agua_2"},"cor_agua":{"Esverdeada":"mk_cor_agua_0","Amarelo-esverdeada":"mk_cor_agua_1","Pardacenta":"mk_cor_agua_2","Escura":"mk_cor_agua_3"},"macrofitas":{"Submersas enraizadas":"mk_macrofitas_0","Flutuantes":"mk_macrofitas_1","Emersa com folha flutuante":"mk_macrofitas_2","Emersa não enraizada":"mk_macrofitas_3"},"outros_registros":{"Mortandade de peixes":"mk_outros_registros_0","Vasilhame de agrotóxico":"mk_outros_registros_1","Salga de peixe":"mk_outros_registros_2","Lançamento de esgoto bruto":"mk_outros_registros_3","Presença de odor":"mk_outros_registros_4"}};
+    const VET_GRUPOS = {"vegetacao":{"Presente":0,"Ausente":1},"vegetacao_condicao":{"Verde":0,"Seca":1},"residuos":{"Sim":0,"Não":1},"ocupacao":{"Sim":0,"Não":1},"recreacao":{"Pesca":0},"animais_pastagem":{"Sim":0,"Não":1},"animais":{"Caprinos":0,"Bovinos":1,"Equinos":2},"vestigios":{"Fezes":0,"Pegadas":1},"estrada":{"Sim":0,"Não":1},"veiculos":{"Sim":0,"Não":1},"veiculos_tipos":{"Carro":0,"Caminhão":1,"Moto":2},"vento":{"Fraco":0,"Moderado":1}};
+    // nome do checkbox de Vetores = mk_<secao>_<grupo>_<indice>
+    const marcaVet = (sec, grupo, valor) => {
+      const idx = (VET_GRUPOS[grupo] || {})[valor];
+      return idx == null ? null : `mk_${sec}_${grupo}_${idx}`;
+    };
+
     const PDF_FICHAS = new Set(["cianobacterias", "zooplancton", "macrofitas", "sedimentos"]);
+
+    // Preenche um PDF AcroForm: textos por nome de campo (as 2ª vias "nome__n"
+    // recebem o mesmo valor do nome-base) e checkboxes marcados; depois achata
+    // (flatten) e abre em nova aba. keepPages = índices de página a manter.
+    async function abrirFormPDF(assetUrl, textVals, checkSet, keepPages) {
+      const bytes = await fetch(assetUrl).then(x => x.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+      const form = pdfDoc.getForm();
+      for (const f of form.getFields()) {
+        const name = f.getName();
+        if (f instanceof PDFLib.PDFTextField) {
+          const v = textVals[name.split("__")[0]];
+          if (v != null && v !== "") { try { f.setText(String(v)); } catch (e) {} }
+        } else if (f instanceof PDFLib.PDFCheckBox) {
+          if (checkSet && checkSet.has(name)) { try { f.check(); } catch (e) {} }
+        }
+      }
+      try { form.flatten(); } catch (e) {}
+      if (Array.isArray(keepPages)) {
+        for (let i = pdfDoc.getPageCount() - 1; i >= 0; i--)
+          if (!keepPages.includes(i)) pdfDoc.removePage(i);
+      }
+      const out = await pdfDoc.save();
+      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
 
     function valoresFicha(tipo, r) {
       const t = tsParts(r.local_timestamp);
@@ -1570,112 +1608,80 @@
       return base;
     }
 
-    // Preenche o PDF OFICIAL (sobreposição) e abre em nova aba p/ imprimir/salvar.
+    // Fichas de laboratório (AcroForm): preenche por nome de campo e mantém a 1ª
+    // página (as 2 vias ficam nela; eventual página em branco é descartada).
     async function gerarFichaPDF(tipo, r) {
-      const coords = FICHAS_COORDS[tipo] || {};
-      const vals = valoresFicha(tipo, r);
-      const bytes = await fetch(`assets/fichas/${tipo}.pdf`).then(x => x.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-      const page = pdfDoc.getPages()[0];
-      const azul = PDFLib.rgb(0, 0, 0.6);
-      for (const [k, pts] of Object.entries(coords)) {
-        const v = vals[k];
-        if (v == null || v === "") continue;
-        for (const p of pts) page.drawText(String(v), { x: p.x, y: p.y, size: 10, font, color: azul });
-      }
-      const out = await pdfDoc.save();
-      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await abrirFormPDF(`assets/fichas/${tipo}.pdf`, valoresFicha(tipo, r), null, [0]);
     }
-
-    // Ficha de Limnologia: marca as opções da caracterização + tabelas HORIBA.
-    const LIMNO_COORDS = {"labels":{"ponto":[87.2,750.9],"data":[81.7,731.4],"sup_prof":[138.0,426.6],"sup_secchi":[376.5,426.6],"prof_prof":[138.0,290.3],"sup_hora":[507,445.6],"prof_hora":[507,309.3]},"params":{"sup":{"ph":[64,336.9],"cond":[123,336.9],"turb":[185,336.9],"od":[258,336.9],"temp":[322,336.9],"sal":[382,336.9],"std":[450,336.9],"orp":[512,336.9]},"prof":{"ph":[64,199.9],"cond":[123,199.9],"turb":[185,199.9],"od":[258,199.9],"temp":[322,199.9],"sal":[382,199.9],"std":[450,199.9],"orp":[512,199.9]}},"marks":{"tempo":{"Chuvoso":[114.8,674.3],"Nublado":[176.0,674.3],"Ensolarado":[231.8,674.3]},"ventos":{"Intensos":[360.2,674.3],"Moderados":[415.1,674.3],"Fracos":[487.2,674.3]},"margens":{"Ocupação humana":[120.2,643.8],"Cultura irrigada":[178.4,643.8],"Animais de pastagem":[231.8,643.8],"Banhistas":[296.4,637.0],"Lavagem de roupa":[352.5,643.8],"Bombas de captação particulares":[425.8,644.3]},"aparencia_agua":{"Barrenta":[145.0,600.2],"Transparente":[257.8,600.2],"Transparente com materiais em decomposição":[373.5,607.0]},"cor_agua":{"Esverdeada":[139.1,562.8],"Amarelo-esverdeada":[242.5,562.8],"Pardacenta":[384.7,562.8],"Escura":[487.0,562.4]},"macrofitas":{"Submersas enraizadas":[116.6,525.5],"Flutuantes":[226.2,525.0],"Emersa com folha flutuante":[321.3,532.4],"Emersa não enraizada":[423.4,525.5]},"outros_registros":{"Mortandade de peixes":[115.7,485.0],"Vasilhame de agrotóxico":[234.1,485.0],"Salga de peixe":[360.3,491.3],"Lançamento de esgoto bruto":[413.0,499.4],"Presença de odor":[481.4,491.3]}},"obs":[48,151.9]};
 
     const brn = (v) => (v == null || v === "") ? "" : String(v).replace(".", ",");
 
+    // Ficha de Limnologia (AcroForm): textos + tabelas HORIBA + checkboxes da
+    // caracterização (marcados pelo MARKS_AGUAS). Preenche só o que foi coletado.
     async function gerarLimnoPDF(r) {
-      const C = LIMNO_COORDS;
-      const bytes = await fetch("assets/fichas/limnologia.pdf").then(x => x.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-      const page = pdfDoc.getPages()[0];
-      const azul = PDFLib.rgb(0, 0, 0.6), vermelho = PDFLib.rgb(0.8, 0, 0);
-      const sup = secao(r, "superficial"), prof = secao(r, "profundidade");
-      const draw = (xy, t, size = 10, color = azul) => {
-        if (t == null || t === "" || !xy) return;
-        page.drawText(String(t), { x: xy[0], y: xy[1], size, font, color });
-      };
       const PARS = ["ph", "cond", "turb", "od", "temp", "sal", "std", "orp"];
-      draw(C.labels.ponto, pontoDe(r));
-      draw(C.labels.data, tsParts(r.local_timestamp).data);
-      draw(C.labels.sup_hora, sup.hora || "");
-      draw(C.labels.sup_prof, brn(param(r, "prof_valor")));
-      draw(C.labels.sup_secchi, brn(param(r, "secchi_valor")));
-      for (const k of PARS) draw(C.params.sup[k], brn(param(r, k + "_valor")));
+      const sup = secao(r, "superficial"), prof = secao(r, "profundidade");
+      const txt = {
+        ponto: pontoDe(r),
+        data: tsParts(r.local_timestamp).data,
+        sup_hora: sup.hora || "",
+        sup_prof: brn(param(r, "prof_valor")),
+        sup_secchi: brn(param(r, "secchi_valor")),
+        obs: observacoes(r),
+      };
+      for (const k of PARS) txt["sup_" + k] = brn(param(r, k + "_valor"));
       if (temColetaProfunda(r)) {
-        draw(C.labels.prof_hora, prof.hora || "");
-        draw(C.labels.prof_prof, brn(paramProf(r, "prof_valor")));
-        for (const k of PARS) draw(C.params.prof[k], brn(paramProf(r, k + "_valor")));
+        txt.prof_hora = prof.hora || "";
+        txt.prof_prof = brn(paramProf(r, "prof_valor"));
+        for (const k of PARS) txt["prof_" + k] = brn(paramProf(r, k + "_valor"));
       }
+      const checks = new Set();
       const amb = secao(r, "ambiente");
-      for (const g of Object.keys(C.marks)) {
+      for (const g of Object.keys(MARKS_AGUAS)) {
         const sel = amb[g];
         if (sel == null) continue;
         for (const v of (Array.isArray(sel) ? sel : [sel])) {
-          const xy = C.marks[g][v];
-          if (xy) page.drawText("X", { x: xy[0], y: xy[1], size: 11, font, color: vermelho });
+          const fn = MARKS_AGUAS[g][v];
+          if (fn) checks.add(fn);
         }
       }
-      draw(C.obs, observacoes(r));
-      const out = await pdfDoc.save();
-      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await abrirFormPDF("assets/fichas/limnologia.pdf", txt, checks, [0]);
     }
 
-    // Fichas de Vetores (vetores.pdf): aspirador+ovitrampa na pág.0, shannon na pág.1.
-    const VET_COORDS = {"aspirador":{"page":0,"labels":{"ponto":[85.1,764.8],"data":[31,683.9],"hora_inicio":[89,683.9],"hora_termino":[142,683.9],"temp_min":[210,683.9],"temp_max":[267,683.9],"umidade":[308,683.9]},"chuva":{"Sim":[370.0,691.0],"Não":[426.6,691.0]},"carac":{"vegetacao":{"Presente":[73.5,649.2],"Ausente":[74.7,627.0]},"vegetacao_condicao":{"Verde":[136.3,649.2],"Seca":[138.9,627.0]},"residuos":{"Sim":[255.3,649.2],"Não":[254.5,627.0]},"ocupacao":{"Sim":[349.5,649.2],"Não":[349.5,627.0]},"recreacao":{"Pesca":[406.8,627.0]},"animais_pastagem":{"Sim":[62.7,587.2],"Não":[62.7,554.2]},"animais":{"Caprinos":[234.7,587.2],"Bovinos":[292.2,587.2],"Equinos":[234.8,554.2]},"vestigios":{"Fezes":[194.5,587.2],"Pegadas":[189.4,554.2]},"estrada":{"Sim":[83.2,514.0],"Não":[82.5,491.0]},"veiculos":{"Sim":[198.0,514.0],"Não":[197.2,491.0]},"veiculos_tipos":{"Carro":[251.8,514.0],"Caminhão":[300.6,514.0],"Moto":[251.8,491.0]},"vento":{"Fraco":[406.9,514.0],"Moderado":[406.8,491.0]}}},"ovitrampa":{"page":0,"labels":{"ponto":[85.1,764.8],"instal_data":[24,304.9],"instal_hora":[82,304.9],"retirada_data":[143,304.9],"retirada_hora":[200,304.9],"temp_min":[40,267.9],"temp_max":[97,267.9],"umidade":[280,304.9]},"chuva":{"Sim":[370.0,304.4],"Não":[426.6,304.4]},"carac":{"vegetacao":{"Presente":[73.5,226.0],"Ausente":[74.7,203.8]},"vegetacao_condicao":{"Verde":[136.3,226.0],"Seca":[138.9,203.8]},"residuos":{"Sim":[255.3,226.0],"Não":[254.5,203.8]},"ocupacao":{"Sim":[349.5,226.0],"Não":[349.5,203.8]},"recreacao":{"Pesca":[406.8,203.8]},"animais_pastagem":{"Sim":[62.7,163.9],"Não":[62.7,130.9]},"animais":{"Caprinos":[120.1,163.9],"Bovinos":[177.4,163.9],"Equinos":[120.0,130.9]},"vestigios":{"Fezes":[309.3,163.9],"Pegadas":[304.1,130.9]},"estrada":{"Sim":[83.2,90.7],"Não":[82.5,67.8]},"veiculos":{"Sim":[198.0,90.7],"Não":[197.2,67.8]},"veiculos_tipos":{"Carro":[251.8,90.7],"Caminhão":[300.6,90.7],"Moto":[251.8,67.8]},"vento":{"Fraco":[406.9,90.7],"Moderado":[406.8,67.8]}}},"shannon":{"page":1,"labels":{"ponto":[85.1,740.8],"data":[31,659.9],"hora_inicio":[89,659.9],"hora_termino":[142,659.9],"fase_lunar":[407.1,703.6],"temp_min":[210,659.9],"temp_max":[267,659.9],"umidade":[308,659.9]},"chuva":{"Sim":[370.0,667.0],"Não":[426.6,667.0]},"carac":{"vegetacao":{"Presente":[73.5,610.2],"Ausente":[74.7,587.6]},"vegetacao_condicao":{"Verde":[136.3,610.2],"Seca":[138.9,587.6]},"residuos":{"Sim":[255.3,610.2],"Não":[254.5,587.6]},"ocupacao":{"Sim":[349.5,610.2],"Não":[349.5,587.6]},"recreacao":{"Pesca":[406.8,587.6]},"animais_pastagem":{"Sim":[62.7,532.0],"Não":[62.7,514.4]},"animais":{"Caprinos":[120.1,532.0],"Bovinos":[177.4,532.0],"Equinos":[120.0,514.4]},"vestigios":{"Fezes":[309.3,532.0],"Pegadas":[304.1,514.4]},"estrada":{"Sim":[83.2,473.9],"Não":[82.5,457.9]},"veiculos":{"Sim":[198.0,473.9],"Não":[197.2,457.9]},"veiculos_tipos":{"Carro":[251.8,473.9],"Caminhão":[300.6,473.9],"Moto":[251.8,457.9]},"vento":{"Fraco":[406.9,473.9],"Moderado":[406.8,457.9]}}}};
+    // Fichas de Vetores (vetores.pdf, AcroForm): aspirador+ovitrampa na pág.0,
+    // shannon na pág.1. Campos nomeados por seção (asp_/ovi_/sha_).
     const VET_FICHAS = new Set(["vet_campo", "vet_shannon"]);
 
-    // Preenche uma seção da folha de Vetores (aspirador | ovitrampa | shannon).
-    function preencherVetSecao(page, C, r, font, sub) {
-      const azul = PDFLib.rgb(0, 0, 0.6), vermelho = PDFLib.rgb(0.8, 0, 0);
-      const L = C.labels;
-      const draw = (xy, v, size = 10, color = azul) => {
-        if (v == null || v === "" || !xy) return;
-        page.drawText(String(v), { x: xy[0], y: xy[1], size, font, color });
-      };
-      const mk = (xy) => { if (xy) page.drawText("X", { x: xy[0], y: xy[1], size: 11, font, color: vermelho }); };
+    const chuvaTxt = (r) => r.chuva === true ? "Sim" : (r.chuva === false ? "Não" : "");
+
+    // Acrescenta a txt/checks os dados de uma seção de Vetores.
+    function montarVetSecao(sec, r, txt, checks) {
       const t = tsParts(r.local_timestamp);
-
-      draw(L.ponto, pontoDe(r));
-      if (sub === "ovitrampa") {
-        draw(L.instal_data, brDate(r.instalacao_data));
-        draw(L.instal_hora, r.instalacao_hora);
-        draw(L.retirada_data, brDate(r.retirada_data));
-        draw(L.retirada_hora, r.retirada_hora);
+      txt[`${sec}_coord`] = r.coordenada || r.coordenada_central || "";
+      if (sec === "ovi") {
+        txt.ovi_instal_data = brDate(r.instalacao_data);
+        txt.ovi_instal_hora = r.instalacao_hora || "";
+        txt.ovi_retirada_data = brDate(r.retirada_data);
+        txt.ovi_retirada_hora = r.retirada_hora || "";
       } else {
-        draw(L.data, t.data);
-        draw(L.hora_inicio, r.hora_inicio);
-        draw(L.hora_termino, r.hora_termino);
-        if (sub === "shannon") draw(L.fase_lunar, r.fase_lunar);
+        txt[`${sec}_ponto`] = pontoDe(r);
+        txt[`${sec}_data`] = t.data;
+        txt[`${sec}_hora_inicio`] = r.hora_inicio || "";
+        txt[`${sec}_hora_termino`] = r.hora_termino || "";
+        if (sec === "sha") txt.sha_fase_lunar = r.fase_lunar || "";
       }
-      draw(L.temp_min, r.temp_min);
-      draw(L.temp_max, r.temp_max);
-      draw(L.umidade, r.umidade);
-
-      if (r.chuva === true) mk(C.chuva.Sim);
-      else if (r.chuva === false) mk(C.chuva["Não"]);
+      txt[`${sec}_temp_min`] = r.temp_min;
+      txt[`${sec}_temp_max`] = r.temp_max;
+      txt[`${sec}_umidade`] = r.umidade;
+      txt[`${sec}_chuva`] = chuvaTxt(r);
 
       const car = r.caracterizacao || {};
-      for (const g of Object.keys(C.carac)) {
+      for (const g of Object.keys(VET_GRUPOS)) {
         const sel = car[g];
         if (sel == null) continue;
         const keys = typeof sel === "boolean" ? [sel ? "Sim" : "Não"]
           : (Array.isArray(sel) ? sel : [sel]);
-        for (const k of keys) mk(C.carac[g][k]);
+        for (const k of keys) { const fn = marcaVet(sec, g, k); if (fn) checks.add(fn); }
       }
     }
 
@@ -1688,35 +1694,28 @@
       const achar = (arr) => (arr || []).find(
         r => pontoDe(r) === ponto && (r.campanha || "") === campanha) || null;
 
-      const bytes = await fetch("assets/fichas/vetores.pdf").then(x => x.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const txt = {}, checks = new Set();
+      let keepPage, usados = 0;
 
-      let keepPage = 0, usados = 0;
       if (tipo === "vet_shannon") {
         const r = achar(allVetor.shannon);
         if (!r) return 0;
-        keepPage = VET_COORDS.shannon.page;
-        preencherVetSecao(pdfDoc.getPages()[keepPage], VET_COORDS.shannon, r, font, "shannon");
-        usados = 1;
+        montarVetSecao("sha", r, txt, checks);
+        keepPage = 1; usados = 1;
       } else {
         // vet_campo: aspirador + ovitrampa na mesma página 0 (folha única).
         const asp = achar(allVetor.aspirador);
         const ovi = achar(allVetor.ovitrampa);
         if (!asp && !ovi) return 0;
         keepPage = 0;
-        const page0 = pdfDoc.getPages()[0];
-        if (asp) { preencherVetSecao(page0, VET_COORDS.aspirador, asp, font, "aspirador"); usados++; }
-        if (ovi) { preencherVetSecao(page0, VET_COORDS.ovitrampa, ovi, font, "ovitrampa"); usados++; }
+        if (asp) { montarVetSecao("asp", asp, txt, checks); usados++; }
+        if (ovi) {
+          montarVetSecao("ovi", ovi, txt, checks); usados++;
+          if (!txt.asp_ponto) txt.asp_ponto = pontoDe(ovi);  // ponto é compartilhado
+        }
       }
 
-      // mantém apenas a página usada
-      for (let i = pdfDoc.getPageCount() - 1; i >= 0; i--) if (i !== keepPage) pdfDoc.removePage(i);
-
-      const out = await pdfDoc.save();
-      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await abrirFormPDF("assets/fichas/vetores.pdf", txt, checks, [keepPage]);
       return usados;
     }
 
