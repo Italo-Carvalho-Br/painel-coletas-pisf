@@ -103,6 +103,19 @@
     body.is-gestor th.gestor-only { z-index: 4; }
     body.is-gestor td.gestor-only { z-index: 2; background: var(--surface); }
     body.is-gestor tbody tr:hover td.gestor-only { background: #FAFDFB; }
+
+    /* ---- Tabela de Coletas: realce de linhas (zebra + hover) ---- */
+    #tbl tbody td { background: var(--surface); }
+    #tbl tbody tr:nth-child(even) td { background: #f3f7f4; }
+    #tbl tbody tr:hover td { background: #e7f1ea; }
+    /* Data/Hora (1ª coluna) e Ponto (2ª) ficam congeladas à esquerda: ao rolar a
+       tabela na horizontal, a identidade da linha nunca sai de vista. */
+    #tbl th:nth-child(1), #tbl td:nth-child(1) {
+      position: sticky; left: 0; width: 150px; min-width: 150px; }
+    #tbl th:nth-child(2), #tbl td:nth-child(2) {
+      position: sticky; left: 150px; box-shadow: 6px 0 6px -6px rgba(0,0,0,.18); }
+    #tbl tbody td:nth-child(1), #tbl tbody td:nth-child(2) { z-index: 2; }
+    #tbl thead th:nth-child(1), #tbl thead th:nth-child(2) { z-index: 5; }
     .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
       padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
     .rowbtn:hover { background: #F2F6F3; }
@@ -251,7 +264,7 @@
         <div class="field"><label>Status</label><br/>
           <select id="fStatus"><option value="">Todos</option><option value="1">Sincronizado</option><option value="0">Pendente</option></select>
         </div>
-        <div class="field"><label>Busca</label><br/><input id="fBusca" type="text" placeholder="ponto ou e-mail…" /></div>
+        <div class="field"><label>Busca</label><br/><input id="fBusca" type="text" placeholder="ponto, ID ou e-mail…" /></div>
         <div class="spacer"></div>
         <button class="btn ghost small" id="clearBtn">Limpar</button>
         <button class="btn small" id="exportBtn">⬇ Exportar Excel</button>
@@ -609,7 +622,7 @@
         if (de && (!d || d < de)) return false;
         if (ate && (!d || d > ate)) return false;
         if (busca) {
-          const hay = ((r.point_label || "") + " " + tech(r)).toLowerCase();
+          const hay = ((r.point_label || "") + " " + (r.point_id || "") + " " + tech(r)).toLowerCase();
           if (!hay.includes(busca)) return false;
         }
         return true;
@@ -781,7 +794,7 @@
         if (de && (!d || d < de)) return false;
         if (ate && (!d || d > ate)) return false;
         if (busca) {
-          const hay = ((r.point_label || "") + " " + tech(r)).toLowerCase();
+          const hay = ((r.point_label || "") + " " + (r.point_id || "") + " " + tech(r)).toLowerCase();
           if (!hay.includes(busca)) return false;
         }
         return true;
