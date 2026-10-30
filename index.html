@@ -108,7 +108,7 @@
     #tbl tbody td { background: var(--surface); }
     #tbl tbody tr:nth-child(even) td { background: #f3f7f4; }
     #tbl tbody tr:hover td { background: #e7f1ea; }
-    /* Data/Hora (1ª coluna) e Ponto (2ª) ficam congeladas à esquerda: ao rolar a
+    /* Ponto (1ª coluna) e Data/Hora (2ª) ficam congeladas à esquerda: ao rolar a
        tabela na horizontal, a identidade da linha nunca sai de vista. */
     #tbl th:nth-child(1), #tbl td:nth-child(1) {
       position: sticky; left: 0; width: 150px; min-width: 150px; }
@@ -283,7 +283,7 @@
         <div class="table-wrap">
           <table id="tbl">
             <thead><tr>
-              <th>Data/Hora</th><th>Ponto</th><th>Técnico</th>
+              <th>Ponto</th><th>Data/Hora</th>
               <th>Reserv. (m)</th><th>Tempo</th>
               <th>pH</th><th>Secchi (m)</th><th>Temp (°C)</th>
               <th>Cond (mS/cm)</th><th>Turb (NTU)</th><th>OD (mg/L)</th>
@@ -650,9 +650,8 @@
       tb.innerHTML = rows.map(r => {
         const obs = observacoes(r);
         return `<tr${obs ? ` title="Observações: ${esc(obs)}"` : ""}>
-        <td>${fmtDate(r.local_timestamp)}</td>
         <td>${esc(r.point_label || r.point_id || "—")}</td>
-        <td>${esc(tech(r))}</td>
+        <td>${fmtDate(r.local_timestamp)}</td>
         <td>${esc(profReservatorio(r))}</td>
         <td>${esc(ambiente(r, "tempo"))}</td>
         ${PARAMS.map(k => `<td>${esc(param(r, k))}</td>`).join("")}
