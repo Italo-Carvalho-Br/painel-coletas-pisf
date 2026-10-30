@@ -104,18 +104,28 @@
     body.is-gestor td.gestor-only { z-index: 2; background: var(--surface); }
     body.is-gestor tbody tr:hover td.gestor-only { background: #FAFDFB; }
 
-    /* ---- Tabela de Coletas: realce de linhas (zebra + hover) ---- */
-    #tbl tbody td { background: var(--surface); }
-    #tbl tbody tr:nth-child(even) td { background: #f3f7f4; }
-    #tbl tbody tr:hover td { background: #e7f1ea; }
-    /* Ponto (1ª coluna) e Data/Hora (2ª) ficam congeladas à esquerda: ao rolar a
-       tabela na horizontal, a identidade da linha nunca sai de vista. */
-    #tbl th:nth-child(1), #tbl td:nth-child(1) {
-      position: sticky; left: 0; width: 150px; min-width: 150px; }
-    #tbl th:nth-child(2), #tbl td:nth-child(2) {
-      position: sticky; left: 150px; box-shadow: 6px 0 6px -6px rgba(0,0,0,.18); }
-    #tbl tbody td:nth-child(1), #tbl tbody td:nth-child(2) { z-index: 2; }
-    #tbl thead th:nth-child(1), #tbl thead th:nth-child(2) { z-index: 5; }
+    /* ---- Tabelas do painel (Coletas, Lacres, Vetores): realce de linhas
+       (zebra + hover) ---- */
+    #tbl tbody td, #lacTbl tbody td, #vTbl tbody td { background: var(--surface); }
+    #tbl tbody tr:nth-child(even) td,
+    #lacTbl tbody tr:nth-child(even) td,
+    #vTbl tbody tr:nth-child(even) td { background: #f3f7f4; }
+    #tbl tbody tr:hover td,
+    #lacTbl tbody tr:hover td,
+    #vTbl tbody tr:hover td { background: #e7f1ea; }
+    /* Só a coluna Ponto (1ª) fica congelada à esquerda: ao rolar na horizontal,
+       a identidade da linha nunca sai de vista. */
+    #tbl th:nth-child(1), #tbl td:nth-child(1),
+    #lacTbl th:nth-child(1), #lacTbl td:nth-child(1),
+    #vTbl th:nth-child(1), #vTbl td:nth-child(1) {
+      position: sticky; left: 0; width: 150px; min-width: 150px;
+      box-shadow: 6px 0 6px -6px rgba(0,0,0,.18); }
+    #tbl tbody td:nth-child(1),
+    #lacTbl tbody td:nth-child(1),
+    #vTbl tbody td:nth-child(1) { z-index: 2; }
+    #tbl thead th:nth-child(1),
+    #lacTbl thead th:nth-child(1),
+    #vTbl thead th:nth-child(1) { z-index: 5; }
     .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
       padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
     .rowbtn:hover { background: #F2F6F3; }
@@ -804,7 +814,7 @@
       // Cabeçalho dinâmico (montado uma vez).
       const thead = $("lacThead");
       if (!thead.dataset.built) {
-        const cols = ['<th>Data/Hora</th>','<th>Ponto</th>','<th>Técnico</th>']
+        const cols = ['<th>Ponto</th>','<th>Data/Hora</th>']
           .concat(LACRES.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
           .concat(ITENS.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
           .concat(['<th>Status</th>','<th class="gestor-only">Ações</th>']);
@@ -826,9 +836,8 @@
       $("lacTbody").innerHTML = rows.map(r => {
         const obs = sealObs(r);
         const tds = [
-          `<td>${fmtDate(r.local_timestamp)}</td>`,
           `<td>${esc(r.point_label || r.point_id || "—")}</td>`,
-          `<td>${esc(tech(r))}</td>`,
+          `<td>${fmtDate(r.local_timestamp)}</td>`,
           ...LACRES.map(([k]) => `<td>${esc(lacreVal(r, k))}</td>`),
           ...ITENS.map(([k]) => `<td>${esc(itemVal(r, k))}</td>`),
           `<td>${r.synced ? '<span class="badge ok">Sincronizado</span>' : '<span class="badge pend">Pendente</span>'}</td>`,
@@ -1276,9 +1285,8 @@
       aspirador: {
         titulo: "Aspirador Entomológico", colecao: "vetor_aspirador",
         cols: [
-          ["Data/Hora", r => fmtDate(r.local_timestamp)],
           ["Ponto", r => r.point_label || r.point_id || ""],
-          ["Técnico", r => tech(r)],
+          ["Data/Hora", r => fmtDate(r.local_timestamp)],
           ["Campanha", r => r.campanha || ""],
           ["Início", r => r.hora_inicio || ""],
           ["Término", r => r.hora_termino || ""],
@@ -1292,9 +1300,8 @@
       ovitrampa: {
         titulo: "Ovitrampas", colecao: "vetor_ovitrampa",
         cols: [
-          ["Armadilha", r => r.armadilha || ""],
           ["Ponto", r => r.point_label || r.point_id || ""],
-          ["Técnico", r => tech(r)],
+          ["Armadilha", r => r.armadilha || ""],
           ["Campanha", r => r.campanha || ""],
           ["Instalação", r => dthr(r.instalacao_data, r.instalacao_hora)],
           ["Retirada", r => dthr(r.retirada_data, r.retirada_hora)],
@@ -1309,9 +1316,8 @@
       shannon: {
         titulo: "Shannon Adaptada", colecao: "vetor_shannon",
         cols: [
-          ["Data/Hora", r => fmtDate(r.local_timestamp)],
           ["Ponto", r => r.point_label || r.point_id || ""],
-          ["Técnico", r => tech(r)],
+          ["Data/Hora", r => fmtDate(r.local_timestamp)],
           ["Campanha", r => r.campanha || ""],
           ["Fase lunar", r => r.fase_lunar || ""],
           ["Início", r => r.hora_inicio || ""],
