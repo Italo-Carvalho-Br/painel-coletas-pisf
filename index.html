@@ -70,10 +70,12 @@
     .panel { padding: 16px; }
     .panel h2 { font-size: 14px; margin: 0 0 12px; }
 
-    .table-wrap { overflow-x: auto; }
+    /* Altura máxima + rolagem própria para o cabeçalho (sticky) travar de
+       verdade ao rolar a lista. Sem isso o overflow-x quebrava o sticky. */
+    .table-wrap { overflow: auto; max-height: 70vh; }
     table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
     th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-    th { background: #F2F6F3; font-weight: 700; position: sticky; top: 0; }
+    th { background: #F2F6F3; font-weight: 700; position: sticky; top: 0; z-index: 3; }
     tbody tr:hover { background: #FAFDFB; }
     .badge { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge.ok { background: rgba(46,158,91,.12); color: var(--green-dark); }
@@ -270,7 +272,7 @@
             <thead><tr>
               <th>Data/Hora</th><th>Ponto</th><th>Técnico</th>
               <th>Reserv. (m)</th><th>Tempo</th>
-              <th>pH</th><th>Prof (m)</th><th>Secchi (m)</th><th>Temp (°C)</th>
+              <th>pH</th><th>Secchi (m)</th><th>Temp (°C)</th>
               <th>Cond (mS/cm)</th><th>Turb (NTU)</th><th>OD (mg/L)</th>
               <th>Sal (%)</th><th>STD (g/L)</th><th>ORP (mV)</th>
               <th>Prof.</th><th>Status</th><th class="gestor-only">Ações</th>
@@ -408,7 +410,10 @@
     const db = getFirestore(app);
 
     // Medições exibidas na tabela, na ordem das colunas (seção "superficial").
-    const PARAMS = ["ph_valor","prof_valor","secchi_valor","temp_valor",
+    // Removido "prof_valor": era a profundidade FIXA da coleta superficial
+    // (SUP_PROF_FIXA=0,51), aparecia igual em todos — a profundidade real do
+    // reservatório já está na coluna "Reserv. (m)".
+    const PARAMS = ["ph_valor","secchi_valor","temp_valor",
                     "cond_valor","turb_valor","od_valor","sal_valor",
                     "std_valor","orp_valor"];
 
@@ -688,8 +693,9 @@
           ...Object.fromEntries(AMBIENTE.map(([k, rotulo]) => [rotulo, ambiente(r, k)])),
 
           // --- Coleta superficial ---
+          // (sem "Sup. profundidade": era fixa 0,51 m; a profundidade real do
+          // ponto está em "Prof. reservatório (m)")
           "Sup. hora": sup.hora ?? "",
-          "Sup. profundidade (m)": param(r, "prof_valor"),
           "Sup. Disco Secchi (m)": param(r, "secchi_valor"),
           "Sup. pH": param(r, "ph_valor"),
           "Sup. condutividade (mS/cm)": param(r, "cond_valor"),
