@@ -1556,11 +1556,20 @@
 
     const PDF_FICHAS = new Set(["cianobacterias", "zooplancton", "macrofitas", "sedimentos"]);
 
+    // Versão dos PDFs oficiais em assets/fichas. É anexada à URL (?v=...) e, junto
+    // com cache:"reload", garante que o navegador NUNCA sirva uma versão antiga do
+    // PDF em cache (que vinha sem campos de formulário e saía em branco).
+    // >>> Troque esta string sempre que algum PDF de ficha for atualizado. <<<
+    const ASSET_VER = "2026-10-30a";
+    const fetchFichaPDF = (url) =>
+      fetch(url + (url.includes("?") ? "&" : "?") + "v=" + ASSET_VER, { cache: "reload" })
+        .then(x => x.arrayBuffer());
+
     // Preenche um PDF AcroForm: textos por nome de campo (as 2ª vias "nome__n"
     // recebem o mesmo valor do nome-base) e checkboxes marcados; depois achata
     // (flatten) e abre em nova aba. keepPages = índices de página a manter.
     async function abrirFormPDF(assetUrl, textVals, checkSet, keepPages) {
-      const bytes = await fetch(assetUrl).then(x => x.arrayBuffer());
+      const bytes = await fetchFichaPDF(assetUrl);
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
       const form = pdfDoc.getForm();
       for (const f of form.getFields()) {
@@ -1743,7 +1752,7 @@
       if (!linhas.length) return 0;
 
       const C = RASTREAB_COORDS, perPage = C.rows.length;
-      const bytes = await fetch("assets/fichas/rastreabilidade.pdf").then(x => x.arrayBuffer());
+      const bytes = await fetchFichaPDF("assets/fichas/rastreabilidade.pdf");
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
       const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
       const nPages = Math.max(1, Math.ceil(linhas.length / perPage));
