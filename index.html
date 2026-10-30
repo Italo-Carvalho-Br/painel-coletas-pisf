@@ -1773,94 +1773,54 @@
       return linhas.length;
     }
 
-    $("fkGerar").addEventListener("click", async () => {
+    // Ficha atualmente montada e exibida no preview (p/ o botão Imprimir/PDF).
+    let ultimaFicha = null;
+    function fichaVazio(prev, msg) {
+      prev.className = "vazio";
+      prev.textContent = msg;
+      $("fkPrint").classList.add("hidden");
+      ultimaFicha = null;
+    }
+
+    // Monta a ficha (o painel DESENHA tudo) e mostra no preview. O PDF sai pelo
+    // botão Imprimir/PDF (impressão do navegador) — sem coordenadas, sem
+    // "escrever por cima", então não há desalinhamento possível.
+    $("fkGerar").addEventListener("click", () => {
       const tipo = $("fkTipo").value;
       const prev = $("fichaPreview");
       if (!tipo) { alert("Selecione a ficha."); return; }
-      if (tipo === "rastreabilidade") {
-        const subKey = $("fkPonto").value, dataEnt = $("fkData").value;
-        if (!subKey || !dataEnt) {
-          prev.className = "vazio";
-          prev.textContent = "Selecione a amostra e a data de entrega.";
-          $("fkPrint").classList.add("hidden");
-          return;
+      try {
+        let res = null;
+        if (tipo === "rastreabilidade") {
+          const subKey = $("fkPonto").value, dataEnt = $("fkData").value;
+          if (!subKey || !dataEnt) return fichaVazio(prev, "Selecione a amostra e a data de entrega.");
+          res = fichaRastreabDoc(subKey, dataEnt);
+          if (!res) return fichaVazio(prev, "Nenhuma amostra desse tipo entregue nessa data.");
+        } else if (VET_FICHAS.has(tipo)) {
+          const ponto = $("fkPonto").value, campanha = $("fkData").value;
+          if (!ponto || !campanha) return fichaVazio(prev, "Selecione o ponto e a campanha.");
+          res = tipo === "vet_shannon"
+            ? fichaVetShannonDoc(ponto, campanha)
+            : fichaVetCampoDoc(ponto, campanha);
+          if (!res) return fichaVazio(prev, "Nenhum registro de vetores para este ponto e campanha.");
+        } else {
+          const r = acharRegistro();
+          if (!r) return fichaVazio(prev, "Nenhum registro encontrado para este ponto e data.");
+          const gen = FICHA_DOC[tipo];
+          if (!gen) return fichaVazio(prev, "Ficha não disponível.");
+          res = gen(r);
         }
-        prev.className = "vazio";
-        prev.textContent = "Gerando a ficha oficial em PDF…";
-        $("fkPrint").classList.add("hidden");
-        try {
-          const n = await gerarRastreabPDF(subKey, dataEnt);
-          if (n > 0) {
-            prev.innerHTML = `✅ Rastreabilidade gerada (${n} amostra(s)) — abriu em nova aba para ` +
-              "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
-              "bloquear o pop-up, permita-o para este site.</span>";
-          } else {
-            prev.className = "vazio";
-            prev.textContent = "Nenhuma amostra desse tipo entregue nessa data.";
-          }
-        } catch (e) {
-          prev.className = "vazio";
-          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
-        }
-        return;
+        ultimaFicha = res;
+        prev.className = "";
+        prev.innerHTML = res.html;
+        $("fkPrint").classList.remove("hidden");
+      } catch (e) {
+        fichaVazio(prev, "Erro ao gerar a ficha: " + (e.message || e));
       }
-      if (VET_FICHAS.has(tipo)) {
-        // Vetores: gera por Ponto + Campanha (folha única p/ aspirador+ovitrampa).
-        const ponto = $("fkPonto").value, campanha = $("fkData").value;
-        if (!ponto || !campanha) {
-          prev.className = "vazio";
-          prev.textContent = "Selecione o ponto e a campanha.";
-          $("fkPrint").classList.add("hidden");
-          return;
-        }
-        prev.className = "vazio";
-        prev.textContent = "Gerando a ficha oficial em PDF…";
-        $("fkPrint").classList.add("hidden");
-        try {
-          const n = await gerarVetPDF(tipo, ponto, campanha);
-          if (n > 0) {
-            prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
-              "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
-              "bloquear o pop-up, permita-o para este site.</span>";
-          } else {
-            prev.className = "vazio";
-            prev.textContent = "Nenhum registro de vetores para este ponto e campanha.";
-          }
-        } catch (e) {
-          prev.className = "vazio";
-          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
-        }
-        return;
-      }
-      const r = acharRegistro();
-      if (!r) {
-        prev.className = "vazio";
-        prev.textContent = "Nenhum registro encontrado para este ponto e data.";
-        $("fkPrint").classList.add("hidden");
-        return;
-      }
-      if (PDF_FICHAS.has(tipo) || tipo === "limno") {
-        prev.className = "vazio";
-        prev.textContent = "Gerando a ficha oficial em PDF…";
-        $("fkPrint").classList.add("hidden");
-        try {
-          if (tipo === "limno") await gerarLimnoPDF(r);
-          else await gerarFichaPDF(tipo, r);
-          prev.innerHTML = "✅ Ficha oficial gerada — abriu em nova aba para " +
-            "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
-            "bloquear o pop-up, permita-o para este site.</span>";
-        } catch (e) {
-          prev.className = "vazio";
-          prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
-        }
-        return;
-      }
-      // Limnologia e Vetores: por enquanto, visualização em HTML.
-      prev.className = "";
-      prev.innerHTML = FICHA_RENDER[tipo](r);
-      $("fkPrint").classList.remove("hidden");
     });
-    $("fkPrint").addEventListener("click", () => window.print());
+    $("fkPrint").addEventListener("click", () => {
+      if (ultimaFicha) imprimirFicha(ultimaFicha.titulo, ultimaFicha.html);
+    });
 
     // ---------- Renderizadores ----------
     const vazio = (v) => (v === "" || v == null) ? "______" : esc(v);
@@ -2022,6 +1982,293 @@
       vet_aspirador: renderVetAspirador,
       vet_ovitrampa: renderVetOvitrampa,
       vet_shannon: renderVetShannon,
+    };
+
+    // ====================================================================
+    //  MODELO "SISTEMA MONTA A FICHA"
+    //  O painel DESENHA a ficha inteira como uma tabela (grade de 8 colunas,
+    //  fiel ao oficial) e coloca cada dado DENTRO da célula. Não há mais
+    //  coordenadas nem "escrever por cima" de um PDF: o valor e a célula são a
+    //  mesma coisa, então desalinhamento é impossível por construção. O PDF
+    //  sai pela impressão do navegador (vetorial, texto selecionável).
+    // ====================================================================
+    const LOGO_URI = "data:image/jpeg;base64,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";
+
+    const FICHA_CSS = `<style>
+.ficha-doc{--val:#0a35b0;--line:#000;--head:#d9d9d9;--sel:#0a7d2c;font-family:Arial,Helvetica,sans-serif;color:#000;width:100%;max-width:820px;margin:0 auto;}
+.ficha-doc *{box-sizing:border-box;}
+.ficha-doc table.ficha{width:100%;border-collapse:collapse;table-layout:fixed;}
+.ficha-doc table.ficha col{width:12.5%;}
+.ficha-doc .ficha td{border:1px solid var(--line);padding:3px 5px;font-size:11px;line-height:1.15;vertical-align:middle;}
+.ficha-doc .cab td{border:1px solid var(--line);padding:4px;}
+.ficha-doc .logo{text-align:center;}
+.ficha-doc .logo img{height:40px;}
+.ficha-doc .titulo{text-align:center;font-weight:bold;font-size:11.5px;}
+.ficha-doc .sec{background:var(--head);text-align:center;font-weight:bold;font-size:11px;}
+.ficha-doc .lab{font-weight:bold;background:#f2f2f2;white-space:nowrap;}
+.ficha-doc .val{color:var(--val);font-weight:bold;}
+.ficha-doc .barra{font-weight:bold;text-align:center;}
+.ficha-doc .bar-sup{background:#ffff00;}
+.ficha-doc .bar-prof{background:#00b0f0;}
+.ficha-doc .opt{text-align:center;color:#555;font-size:10.5px;}
+.ficha-doc .opt.on{color:#000;font-weight:bold;}
+.ficha-doc .opt.on::before{content:"\\2713 ";color:var(--sel);font-weight:bold;}
+.ficha-doc .hcol{text-align:center;font-weight:bold;font-size:10px;background:#f2f2f2;}
+.ficha-doc .hval{text-align:center;color:var(--val);font-weight:bold;font-size:13px;}
+.ficha-doc .obs{height:80px;vertical-align:top;color:var(--val);font-weight:bold;}
+.ficha-doc .cnt{text-align:center;}
+.ficha-doc .lbl{font-weight:bold;background:#f2f2f2;}
+.ficha-doc .assin{padding-top:40px;text-align:center;font-size:10px;vertical-align:bottom;}
+</style>`;
+
+    const cel = (v) => (v == null || v === "") ? "—" : esc(String(v));
+
+    function docFicha(titulo, inner) {
+      return { titulo, html: FICHA_CSS +
+        `<div class="ficha-doc"><table class="ficha">` +
+        `<colgroup><col><col><col><col><col><col><col><col></colgroup>` +
+        inner + `</table></div>` };
+    }
+    function fkHeadRow(tituloHtml) {
+      return `<tr class="cab"><td class="logo" colspan="2"><img src="${LOGO_URI}" alt=""></td>` +
+        `<td class="titulo" colspan="6">${tituloHtml}</td></tr>`;
+    }
+    // Conjunto das opções marcadas de um grupo da caracterização (limnologia).
+    function ambSelSet(r, grupo) {
+      const v = secao(r, "ambiente")[grupo];
+      const a = Array.isArray(v) ? v : (v == null || v === "" ? [] : [v]);
+      return new Set(a.map(x => String(x)));
+    }
+    const optTd = (sel, txt, cs) =>
+      `<td class="opt${sel.has(txt) ? " on" : ""}"${cs ? ` colspan="${cs}"` : ""}>${esc(txt)}</td>`;
+
+    // Abre a ficha montada numa aba nova e dispara a impressão (salvar em PDF).
+    function imprimirFicha(titulo, html) {
+      const w = window.open("", "_blank");
+      if (!w) { alert("Permita pop-ups neste site para imprimir ou salvar em PDF."); return; }
+      w.document.write(`<!doctype html><html lang="pt-br"><head><meta charset="utf-8">` +
+        `<title>${esc(titulo)}</title>` +
+        `<style>@page{size:A4 portrait;margin:10mm;}body{margin:0;}</style></head><body>` +
+        html + `</body></html>`);
+      w.document.close(); w.focus();
+      setTimeout(() => { try { w.print(); } catch (e) {} }, 350);
+    }
+
+    // ---- Limnologia (grade de 8 colunas idêntica ao oficial) ----
+    const HORIBA_COLS = `<tr><td class="hcol">pH</td><td class="hcol">Cond. Elétrica (mS/cm)</td>` +
+      `<td class="hcol">Turbidez (NTU)</td><td class="hcol">OD (mg/l)</td><td class="hcol">T (°C)</td>` +
+      `<td class="hcol">Salin. (%)</td><td class="hcol">STD (g/l)</td><td class="hcol">ORP (mV)</td></tr>`;
+    function horibaVals(r, prof) {
+      const g = k => prof ? paramProf(r, k) : param(r, k);
+      const PARS = ["ph_valor", "cond_valor", "turb_valor", "od_valor",
+                    "temp_valor", "sal_valor", "std_valor", "orp_valor"];
+      return `<tr>` + PARS.map(k => `<td class="hval">${cel(brn(g(k)))}</td>`).join("") + `</tr>`;
+    }
+    function fichaLimnoDoc(r) {
+      const t = tsParts(r.local_timestamp);
+      const S = g => ambSelSet(r, g);
+      const tempo = S("tempo"), ventos = S("ventos"), marg = S("margens"),
+            apar = S("aparencia_agua"), cor = S("cor_agua"),
+            mac = S("macrofitas"), out = S("outros_registros");
+      const tituloLinha = `${r.campanha ? esc(r.campanha) : "_____"}ª CAMPANHA DE MONITORAMENTO ` +
+        `DE QUALIDADE DA ÁGUA<br>E LIMNOLOGIA`;
+      let h = fkHeadRow(tituloLinha);
+      h += `<tr><td class="lab">Ponto:</td><td class="val" colspan="7">${cel(pontoDe(r))}</td></tr>`;
+      h += `<tr><td class="lab">Data:</td><td class="val" colspan="7">${cel(t.data)}</td></tr>`;
+      h += `<tr><td class="sec" colspan="8">Caracterização</td></tr>`;
+      h += `<tr><td class="lab">Tempo:</td>` +
+        optTd(tempo, "Chuvoso") + optTd(tempo, "Nublado") + optTd(tempo, "Ensolarado") +
+        `<td class="lab cnt">Ventos:</td>` +
+        optTd(ventos, "Intensos") + optTd(ventos, "Moderados") + optTd(ventos, "Fracos") + `</tr>`;
+      h += `<tr><td class="lab">Margens:</td>` +
+        optTd(marg, "Ocupação humana") + optTd(marg, "Cultura irrigada") +
+        optTd(marg, "Animais de pastagem") + optTd(marg, "Banhistas") +
+        optTd(marg, "Lavagem de roupa") + optTd(marg, "Bombas de captação particulares", 2) + `</tr>`;
+      h += `<tr><td class="lab">Aparência da água:</td>` +
+        optTd(apar, "Barrenta", 2) + optTd(apar, "Transparente", 2) +
+        optTd(apar, "Transparente com materiais em decomposição", 3) + `</tr>`;
+      h += `<tr><td class="lab">Cor da água:</td>` +
+        optTd(cor, "Esverdeada", 2) + optTd(cor, "Amarelo-esverdeada", 2) +
+        optTd(cor, "Pardacenta", 2) + optTd(cor, "Escura") + `</tr>`;
+      h += `<tr><td class="lab">Macrófitas:</td>` +
+        optTd(mac, "Submersas enraizadas", 2) + optTd(mac, "Flutuantes") +
+        optTd(mac, "Emersa com folha flutuante", 2) + optTd(mac, "Emersa não enraizada", 2) + `</tr>`;
+      h += `<tr><td class="lab">Outros:</td>` +
+        optTd(out, "Mortandade de peixes", 2) + optTd(out, "Vasilhame de agrotóxico", 2) +
+        optTd(out, "Salga de peixe") + optTd(out, "Lançamento de esgoto bruto") +
+        optTd(out, "Presença de odor") + `</tr>`;
+      h += `<tr><td class="barra bar-sup" colspan="6">Coleta Superficial</td>` +
+        `<td class="lab cnt">Hora:</td><td class="val cnt">${cel(secao(r, "superficial").hora)}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Profundidade (m):</td>` +
+        `<td class="val cnt" colspan="2">${cel(brn(param(r, "prof_valor")))}</td>` +
+        `<td class="lab cnt" colspan="2">Disco Secchi (m):</td>` +
+        `<td class="val cnt" colspan="2">${cel(brn(param(r, "secchi_valor")))}</td></tr>`;
+      h += `<tr><td class="sec" colspan="8">PARÂMETROS FÍSICO QUÍMICOS - HORIBA</td></tr>` +
+        HORIBA_COLS + horibaVals(r, false);
+      if (temColetaProfunda(r)) {
+        h += `<tr><td class="barra bar-prof" colspan="6">Coleta Profundidade</td>` +
+          `<td class="lab cnt">Hora:</td><td class="val cnt">${cel(secao(r, "profundidade").hora)}</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Profundidade (m):</td>` +
+          `<td class="val" colspan="6">${cel(brn(paramProf(r, "prof_valor")))}</td></tr>`;
+        h += `<tr><td class="sec" colspan="8">PARÂMETROS FÍSICO QUÍMICOS - HORIBA</td></tr>` +
+          HORIBA_COLS + horibaVals(r, true);
+      }
+      const obs = observacoes(r);
+      h += `<tr><td class="sec" colspan="8">OBSERVAÇÕES</td></tr>`;
+      h += `<tr><td class="obs" colspan="8">${obs ? esc(obs) : ""}</td></tr>`;
+      return docFicha("Ficha de Limnologia — " + pontoDe(r), h);
+    }
+
+    // ---- Fichas de entrega de amostras (laboratório) ----
+    function fichaEntregaDoc(r, titulo, subt, assA, assB, secoes) {
+      const t = tsParts(r.local_timestamp);
+      let h = fkHeadRow(esc(titulo) + "<br>" + esc(subt));
+      h += `<tr><td class="lab" colspan="2">Data da coleta:</td><td class="val" colspan="2">${cel(t.data)}</td>` +
+        `<td class="lab cnt" colspan="2">Hora da coleta:</td><td class="val cnt" colspan="2">${cel(t.hora)}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Data da entrega:</td><td colspan="2"></td>` +
+        `<td class="lab cnt" colspan="2">Hora da entrega:</td><td colspan="2"></td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Ponto da coleta:</td><td class="val" colspan="6">${cel(pontoDe(r))}</td></tr>`;
+      for (const s of secoes) {
+        h += `<tr><td class="sec" colspan="8">${esc(s.sec)}</td></tr>`;
+        for (const [lbl, val] of s.linhas)
+          h += `<tr><td class="lbl" colspan="5">${esc(lbl)}</td><td class="val" colspan="3">${cel(val)}</td></tr>`;
+      }
+      h += `<tr><td class="assin" colspan="4">${esc(assA)}</td><td class="assin" colspan="4">${esc(assB)}</td></tr>`;
+      return docFicha(titulo, h);
+    }
+
+    // ---- Vetores ----
+    const vetAchar = (arr, ponto, campanha) =>
+      (arr || []).find(r => pontoDe(r) === ponto && (r.campanha || "") === campanha) || null;
+    function vetClima(r) {
+      return `<tr><td class="lab" colspan="2">Temp. mín (°C):</td><td class="val" colspan="2">${cel(r.temp_min)}</td>` +
+        `<td class="lab cnt" colspan="2">Temp. máx (°C):</td><td class="val cnt" colspan="2">${cel(r.temp_max)}</td></tr>` +
+        `<tr><td class="lab" colspan="2">Umidade (%):</td><td class="val" colspan="2">${cel(r.umidade)}</td>` +
+        `<td class="lab cnt" colspan="2">Chuva:</td><td class="val cnt" colspan="2">${cel(sn(r.chuva))}</td></tr>`;
+    }
+    function vetCarac(r) {
+      const c = caracCols(r);
+      const linhas = Object.entries(c).filter(([, v]) => v !== "" && v != null);
+      let h = `<tr><td class="sec" colspan="8">Caracterização geral da área</td></tr>`;
+      if (!linhas.length) return h + `<tr><td colspan="8">—</td></tr>`;
+      for (const [k, v] of linhas)
+        h += `<tr><td class="lbl" colspan="3">${esc(k)}</td><td class="val" colspan="5">${cel(v)}</td></tr>`;
+      return h;
+    }
+    function fichaVetCampoDoc(ponto, campanha) {
+      const asp = vetAchar(allVetor.aspirador, ponto, campanha);
+      const ovi = vetAchar(allVetor.ovitrampa, ponto, campanha);
+      if (!asp && !ovi) return null;
+      let h = fkHeadRow("VETORES E HOSPEDEIROS — FOLHA DE CAMPO<br>" +
+        esc(ponto) + " · Campanha " + esc(campanha));
+      if (asp) {
+        const t = tsParts(asp.local_timestamp);
+        h += `<tr><td class="sec" colspan="8">Aspirador Entomológico</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Ponto:</td><td class="val" colspan="2">${cel(pontoDe(asp))}</td>` +
+          `<td class="lab cnt" colspan="2">Data:</td><td class="val cnt" colspan="2">${cel(t.data)}</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Hora início:</td><td class="val" colspan="2">${cel(asp.hora_inicio)}</td>` +
+          `<td class="lab cnt" colspan="2">Hora término:</td><td class="val cnt" colspan="2">${cel(asp.hora_termino)}</td></tr>`;
+        h += vetClima(asp) + vetCarac(asp);
+        if (asp.observacoes) h += `<tr><td class="sec" colspan="8">Observações — Aspirador</td></tr>` +
+          `<tr><td class="obs" colspan="8">${esc(asp.observacoes)}</td></tr>`;
+      }
+      if (ovi) {
+        h += `<tr><td class="sec" colspan="8">Ovitrampa</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Armadilha:</td><td class="val" colspan="2">${cel(ovi.armadilha)}</td>` +
+          `<td class="lab cnt" colspan="2">Ponto:</td><td class="val cnt" colspan="2">${cel(pontoDe(ovi))}</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Instalação:</td><td class="val" colspan="2">${cel(dthr(ovi.instalacao_data, ovi.instalacao_hora))}</td>` +
+          `<td class="lab cnt" colspan="2">Retirada:</td><td class="val cnt" colspan="2">${cel(dthr(ovi.retirada_data, ovi.retirada_hora))}</td></tr>`;
+        h += `<tr><td class="lab" colspan="2">Ocorrência:</td><td class="val" colspan="2">${cel(ovi.retirada_ocorrencia)}</td>` +
+          `<td class="lab cnt" colspan="2">Estado:</td><td class="val cnt" colspan="2">${cel(estadoLabel(ovi.estado))}</td></tr>`;
+        h += vetClima(ovi) + vetCarac(ovi);
+        const oi = ovi.observacoes_instalacao, orr = ovi.retirada_obs;
+        if (oi || orr) h += `<tr><td class="sec" colspan="8">Observações — Ovitrampa</td></tr>` +
+          `<tr><td class="lbl" colspan="2">Instalação</td><td class="val" colspan="6">${oi ? esc(oi) : "—"}</td></tr>` +
+          `<tr><td class="lbl" colspan="2">Retirada</td><td class="val" colspan="6">${orr ? esc(orr) : "—"}</td></tr>`;
+      }
+      return docFicha("Vetores — Folha de campo — " + ponto, h);
+    }
+    function fichaVetShannonDoc(ponto, campanha) {
+      const r = vetAchar(allVetor.shannon, ponto, campanha);
+      if (!r) return null;
+      const t = tsParts(r.local_timestamp);
+      let h = fkHeadRow("VETORES E HOSPEDEIROS — SHANNON ADAPTADA<br>" +
+        esc(ponto) + " · Campanha " + esc(campanha));
+      h += `<tr><td class="lab" colspan="2">Ponto:</td><td class="val" colspan="2">${cel(pontoDe(r))}</td>` +
+        `<td class="lab cnt" colspan="2">Data:</td><td class="val cnt" colspan="2">${cel(t.data)}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Hora início:</td><td class="val" colspan="2">${cel(r.hora_inicio)}</td>` +
+        `<td class="lab cnt" colspan="2">Hora término:</td><td class="val cnt" colspan="2">${cel(r.hora_termino)}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Fase lunar:</td><td class="val" colspan="6">${cel(r.fase_lunar)}</td></tr>`;
+      h += vetClima(r) + vetCarac(r);
+      if (r.observacoes) h += `<tr><td class="sec" colspan="8">Observações</td></tr>` +
+        `<tr><td class="obs" colspan="8">${esc(r.observacoes)}</td></tr>`;
+      return docFicha("Vetores — Shannon — " + ponto, h);
+    }
+
+    // ---- Rastreabilidade (tabela de amostras entregues) ----
+    function fichaRastreabDoc(subKey, dataEnt) {
+      const sub = SUBTIPOS.find(s => s.key === subKey);
+      if (!sub) return null;
+      const linhas = allSeals
+        .filter(r => String(r.data_entrega || "").slice(0, 10) === dataEnt && amostraPresente(r, sub))
+        .map(r => {
+          const t = tsParts(r.local_timestamp);
+          return {
+            data: t.data, key: t.key, ponto: pontoDe(r),
+            etiqueta: sub.kind === "lacre" ? String((r.lacres || {})[sub.key]).trim() : "-",
+            local: r.local_entrega || "",
+          };
+        })
+        .sort((a, b) => (a.key + a.ponto).localeCompare(b.key + b.ponto));
+      if (!linhas.length) return null;
+      const local = (linhas.find(l => l.local) || {}).local || "";
+      let h = fkHeadRow("RASTREABILIDADE DE AMOSTRAS");
+      h += `<tr><td class="lab" colspan="2">Data da entrega:</td><td class="val" colspan="2">${cel(brDate(dataEnt))}</td>` +
+        `<td class="lab cnt" colspan="2">Quantidade:</td><td class="val cnt" colspan="2">${linhas.length}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Amostra:</td><td class="val" colspan="6">${esc(sub.nome)}</td></tr>`;
+      h += `<tr><td class="lab" colspan="2">Local de entrega:</td><td class="val" colspan="6">${cel(local)}</td></tr>`;
+      h += `<tr><td class="hcol" colspan="2">Data</td><td class="hcol" colspan="3">Ponto</td>` +
+        `<td class="hcol" colspan="3">Lacre / Etiqueta</td></tr>`;
+      for (const l of linhas)
+        h += `<tr><td class="cnt" colspan="2">${cel(l.data)}</td><td colspan="3">${cel(l.ponto)}</td>` +
+          `<td class="val cnt" colspan="3">${cel(l.etiqueta)}</td></tr>`;
+      return docFicha("Rastreabilidade — " + sub.nome, h);
+    }
+
+    // Mapa tipo -> gerador de ficha (um registro r).
+    const FICHA_DOC = {
+      limno: fichaLimnoDoc,
+      sedimentos: r => fichaEntregaDoc(r, "Ficha de Entrega de Amostras — UNEB",
+        "Amostras de Sedimentos, Zoobentos e Fitoplâncton",
+        "Representante do Consórcio Gestor Ambiental", "Representante da UNEB", [
+          { sec: "Fitoplâncton", linhas: [
+            ["Fitoplâncton — superfície", lacreVal(r, "fitoplancton_superficie")],
+            ["Fitoplâncton — fundo", lacreVal(r, "fitoplancton_fundo")],
+          ] },
+          { sec: "Sedimentos e Zoobentos", linhas: [
+            ["Sedimento de margem — zoobentos (quadrado)", lacreVal(r, "sed_margem_zoobentos_quadrado")],
+            ["Sedimento de margem — zoobentos qualitativo (peneira)", lacreVal(r, "sed_margem_zoobentos_peneira")],
+            ["Sedimento de margem — análise granulométrica", lacreVal(r, "sed_margem_granulometrica")],
+            ["Macroinvertebrados associados a macrófitas (FITAL)", lacreVal(r, "macroinvertebrados_fital")],
+            ["Sedimento de fundo — zoobentos (draga)", lacreVal(r, "sed_fundo_zoobentos_draga")],
+            ["Sedimento de fundo — análise granulométrica (draga)", lacreVal(r, "sed_fundo_granulometrica_draga")],
+          ] },
+        ]),
+      cianobacterias: r => fichaEntregaDoc(r, "Ficha de Entrega de Amostras — UNEB",
+        "Amostras de Cianobactérias",
+        "Representante do Consórcio Gestor Ambiental", "Representante da UNEB",
+        [ { sec: "Cianobactérias", linhas: [
+          ["Cianobactérias (polietileno 5.000 mL)", lacreVal(r, "cianobacterias_polietileno")] ] } ]),
+      macrofitas: r => fichaEntregaDoc(r, "Ficha de Entrega de Amostras — UFPE",
+        "Amostras de Macrófitas",
+        "Representante do Consórcio Gestor Ambiental", "Representante da UFPE",
+        [ { sec: "Macrófitas", linhas: [
+          ["Biomassa de macrófita (quadrado)", itemVal(r, "biomassa_macrofita_quadrado")],
+          ["Levantamento florístico", itemVal(r, "levantamento_floristico")] ] } ]),
+      zooplancton: r => fichaEntregaDoc(r, "Ficha de Entrega de Amostras — UFPE",
+        "Amostras de Zooplâncton",
+        "Representante do Consórcio Gestor Ambiental", "Representante da UFPE",
+        [ { sec: "Zooplâncton", linhas: [["Zooplâncton", itemVal(r, "zooplancton")]] } ]),
     };
   </script>
 </body>
