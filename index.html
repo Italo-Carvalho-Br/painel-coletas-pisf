@@ -1063,7 +1063,7 @@
       const reserv = parseNum(val("f_reserv"));
       if (!pointId) return setMsg("Selecione o ponto."), false;
       if (!data) return setMsg("Informe a data."), false;
-      if (reserv == null || reserv <= 0) return setMsg("Informe a profundidade do reservatório (> 0)."), false;
+      if (reserv == null || reserv < 0) return setMsg("Informe a profundidade do reservatório (0 ou mais)."), false;
       const pt = POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
       const seco = reserv < PONTO_SECO_MAX;
       const temProf = reserv >= PROF_MIN;
