@@ -1096,6 +1096,10 @@
       let horaSup = val("f_hora_sup");
       if (seco) {
         parameters.ponto_seco = true;
+        // Ponto seco não tem medição físico-química, mas a hora da coleta é um
+        // dado real e precisa ser salva (antes era descartada no ponto seco).
+        if (!horaSup) return setMsg("Informe a hora da coleta."), false;
+        parameters.superficial = { hora: horaSup };
       } else {
         if (!horaSup) return setMsg("Informe a hora da coleta superficial."), false;
         const sup = { hora: horaSup, prof_valor: SUP_PROF_FIXA, prof_unidade: "m" };
@@ -1118,11 +1122,11 @@
         }
       }
 
-      // Timestamp do momento da coleta (data + hora superficial; só data se seco).
+      // Timestamp do momento da coleta (data + hora da coleta superficial),
+      // inclusive em ponto seco — a hora agora é sempre registrada.
       const [Y,M,D] = data.split("-").map(Number);
-      let dt;
-      if (seco) dt = new Date(Y, M-1, D);
-      else { const [h,mi] = horaSup.split(":").map(Number); dt = new Date(Y, M-1, D, h, mi); }
+      const [h,mi] = horaSup.split(":").map(Number);
+      const dt = new Date(Y, M-1, D, h, mi);
 
       const id = rec ? rec.id : uuid();
       const docData = {
@@ -1592,15 +1596,37 @@
     // Preenche um PDF AcroForm: textos por nome de campo (as 2ª vias "nome__n"
     // recebem o mesmo valor do nome-base) e checkboxes marcados; depois achata
     // (flatten) e abre em nova aba. keepPages = índices de página a manter.
+    // Fonte padrão das fichas: 12pt. Os campos AcroForm foram criados com
+    // auto-size (fontSize 0), que incha o texto em células altas (saía "muito
+    // grande"); aqui fixamos 12pt e só reduzimos quando o valor não cabe na
+    // largura/altura da célula (ex.: nome de ponto longo), nunca passando de 12.
+    // Não altera o leiaute oficial — só o tamanho do texto preenchido.
+    const FONTE_FICHA = 12;
     async function abrirFormPDF(assetUrl, textVals, checkSet, keepPages) {
       const bytes = await fetchFichaPDF(assetUrl);
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
       const form = pdfDoc.getForm();
+      const HELV = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const tamFonte = (f, v) => {
+        try {
+          const r = f.acroField.getWidgets()[0].getRectangle();
+          const larg = r.width - 4, alt = r.height - 2;
+          let size = FONTE_FICHA;
+          if (!f.isMultiline()) {
+            const w = HELV.widthOfTextAtSize(String(v), FONTE_FICHA);
+            if (larg > 0 && w > larg) size = Math.max(5, larg * FONTE_FICHA / w);
+            if (alt > 0) size = Math.min(size, alt);
+          }
+          return size;
+        } catch (e) { return FONTE_FICHA; }
+      };
       for (const f of form.getFields()) {
         const name = f.getName();
         if (f instanceof PDFLib.PDFTextField) {
           const v = textVals[name.split("__")[0]];
-          if (v != null && v !== "") { try { f.setText(String(v)); } catch (e) {} }
+          if (v != null && v !== "") {
+            try { f.setText(String(v)); f.setFontSize(tamFonte(f, v)); } catch (e) {}
+          }
         } else if (f instanceof PDFLib.PDFCheckBox) {
           if (checkSet && checkSet.has(name)) { try { f.check(); } catch (e) {} }
         }
