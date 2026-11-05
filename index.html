@@ -1607,6 +1607,22 @@
       const pdfDoc = await PDFLib.PDFDocument.load(bytes);
       const form = pdfDoc.getForm();
       const HELV = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const HELV_BOLD = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+      const paginas = pdfDoc.getPages();
+      // Em qual página está o widget do checkbox? (fichas de vetores têm 2 páginas)
+      const paginaDoWidget = (w) => {
+        try {
+          const pref = w.dict.get(PDFLib.PDFName.of("P"));
+          if (pref) { const pg = paginas.find(p => p.ref === pref); if (pg) return pg; }
+        } catch (e) {}
+        for (const pg of paginas) {
+          const an = pg.node.Annots && pg.node.Annots();
+          if (!an) continue;
+          for (let i = 0; i < an.size(); i++)
+            try { if (pdfDoc.context.lookup(an.get(i)) === w.dict) return pg; } catch (e) {}
+        }
+        return paginas[0];
+      };
       const tamFonte = (f, v) => {
         try {
           const r = f.acroField.getWidgets()[0].getRectangle();
@@ -1620,6 +1636,11 @@
           return size;
         } catch (e) { return FONTE_FICHA; }
       };
+      // Opções marcadas: em vez do "check" padrão do checkbox, um "X" vermelho
+      // centralizado na caixa. Guardamos posição+página ANTES do flatten (que
+      // apaga os widgets) e desenhamos DEPOIS, por cima de tudo. O checkbox fica
+      // desmarcado (invisível, como as demais opções).
+      const marcasX = [];
       for (const f of form.getFields()) {
         const name = f.getName();
         if (f instanceof PDFLib.PDFTextField) {
@@ -1628,10 +1649,27 @@
             try { f.setText(String(v)); f.setFontSize(tamFonte(f, v)); } catch (e) {}
           }
         } else if (f instanceof PDFLib.PDFCheckBox) {
-          if (checkSet && checkSet.has(name)) { try { f.check(); } catch (e) {} }
+          if (checkSet && checkSet.has(name)) {
+            for (const w of f.acroField.getWidgets())
+              try { marcasX.push({ pg: paginaDoWidget(w), r: w.getRectangle() }); } catch (e) {}
+          }
         }
       }
       try { form.flatten(); } catch (e) {}
+      // "X" vermelho sobre cada opção marcada. Tamanho FIXO (uniforme em todas as
+      // fichas; as caixas variam de tamanho), centralizado no centro da caixa.
+      const VERMELHO = PDFLib.rgb(0.85, 0.12, 0.12);
+      const TAM_X = 11;
+      const capH = TAM_X * 0.717, larguraX = HELV_BOLD.widthOfTextAtSize("X", TAM_X);
+      for (const { pg, r } of marcasX) {
+        try {
+          pg.drawText("X", {
+            x: r.x + r.width / 2 - larguraX / 2,
+            y: r.y + r.height / 2 - capH / 2,
+            size: TAM_X, font: HELV_BOLD, color: VERMELHO,
+          });
+        } catch (e) {}
+      }
       if (Array.isArray(keepPages)) {
         for (let i = pdfDoc.getPageCount() - 1; i >= 0; i--)
           if (!keepPages.includes(i)) pdfDoc.removePage(i);
