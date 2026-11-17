@@ -1166,12 +1166,10 @@
           <div class="fld"><label>Data *</label><input type="date" id="l_data" value="${esc(parts.date || hoje())}"/></div>
           <div class="fld"><label>Hora *</label><input type="time" id="l_hora" value="${esc(parts.time)}"/></div>
         </div>
-        <div class="sec-title">Entrega e campanha</div>
+        <div class="sec-title">Datas de entrega</div>
         <div class="fgrid">
           <div class="fld"><label>Data de entrega UNEB</label><input type="date" id="l_entrega_uneb" value="${esc(p.data_entrega_uneb||p.data_entrega||"")}"/></div>
           <div class="fld"><label>Data de entrega UFPE</label><input type="date" id="l_entrega_ufpe" value="${esc(p.data_entrega_ufpe||p.data_entrega||"")}"/></div>
-          <div class="fld"><label>Local de entrega</label><input id="l_local" value="${esc(p.local_entrega||"")}" placeholder="Ex.: UNEB, UFPE…"/></div>
-          <div class="fld full"><label>Campanha</label><input id="l_campanha" value="${esc(p.campanha||"")}" placeholder="Ex.: 34ª Campanha"/></div>
         </div>
         <div class="sec-title">Lacres das amostras (número) *</div>
         <div class="fgrid">
@@ -1229,8 +1227,6 @@
         observacoes: val("l_obs").trim(),
         data_entrega_uneb: val("l_entrega_uneb") || "",
         data_entrega_ufpe: val("l_entrega_ufpe") || "",
-        local_entrega: val("l_local").trim(),
-        campanha: val("l_campanha").trim(),
         editado_por: GESTOR_EMAIL,
         editado_em: serverTimestamp(),
       };
