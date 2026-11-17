@@ -126,6 +126,21 @@
     #tbl thead th:nth-child(1),
     #lacTbl thead th:nth-child(1),
     #vTbl thead th:nth-child(1) { z-index: 5; }
+    /* Lacres: a 1ª coluna é "Situação" (bolinha estreita). Congela Situação +
+       Ponto juntos à esquerda (box-sizing é border-box, então left=56 bate). */
+    #lacTbl th:nth-child(1), #lacTbl td:nth-child(1) {
+      width: 56px; min-width: 56px; box-shadow: none; text-align: center; }
+    #lacTbl th:nth-child(2), #lacTbl td:nth-child(2) {
+      position: sticky; left: 56px; width: 150px; min-width: 150px;
+      box-shadow: 6px 0 6px -6px rgba(0,0,0,.18); }
+    #lacTbl tbody td:nth-child(2) { z-index: 2; }
+    #lacTbl thead th:nth-child(2) { z-index: 5; }
+    /* Bolinha de situação da entrega. */
+    .sit-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+      vertical-align: middle; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+    .sit-dot.verde { background: #2E9E5B; }
+    .sit-dot.laranja { background: var(--warning); }
+    .sit-dot.vermelho { background: var(--error); }
     .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
       padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
     .rowbtn:hover { background: #F2F6F3; }
@@ -810,11 +825,35 @@
       });
     }
 
+    // Situação da ENTREGA do lacre (bolinha na 1ª coluna):
+    //  • verde    = já entregue (data <= hoje em TODOS os laboratórios necessários)
+    //  • laranja  = datas informadas, mas ainda não chegou a data de entrega
+    //  • vermelho = falta data em algum laboratório necessário
+    // Laboratório necessário = o lacre tem amostra daquele destino (lacres{}=UNEB,
+    // itens{}=UFPE). Sem amostra alguma, avalia pelas datas que existirem.
+    function statusEntrega(r) {
+      const lac = r.lacres || {}, it = r.itens || {};
+      const precisaUneb = LACRES.some(([k]) => { const v = lac[k]; const s = v == null ? "" : String(v).trim(); return s !== "" && s !== "0"; });
+      const precisaUfpe = ITENS.some(([k]) => { const v = it[k]; return v === true || v === "Sim" || v === 1 || v === "1"; });
+      let labs = [];
+      if (precisaUneb) labs.push("uneb");
+      if (precisaUfpe) labs.push("ufpe");
+      if (!labs.length) labs = ["uneb", "ufpe"].filter(l => entregaLab(r, l));
+      if (!labs.length) return "vermelho";
+      const datas = labs.map(l => entregaLab(r, l));
+      if (datas.some(d => !d)) return "vermelho";
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const chegou = (iso) => { const d = new Date(String(iso).slice(0, 10) + "T00:00:00"); return !isNaN(d) && d <= hoje; };
+      return datas.every(chegou) ? "verde" : "laranja";
+    }
+    const SIT_TITULO = { verde: "Entregue", laranja: "Datas informadas — ainda não entregue", vermelho: "Sem data de entrega" };
+    const dotEntrega = (r) => { const s = statusEntrega(r); return `<td><span class="sit-dot ${s}" title="${SIT_TITULO[s]}"></span></td>`; };
+
     function renderSeals() {
       // Cabeçalho dinâmico (montado uma vez).
       const thead = $("lacThead");
       if (!thead.dataset.built) {
-        const cols = ['<th>Ponto</th>','<th>Data/Hora</th>']
+        const cols = ['<th>Situação</th>','<th>Ponto</th>','<th>Data/Hora</th>']
           .concat(LACRES.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
           .concat(ITENS.map(([,full,short]) => `<th title="${esc(full)}">${esc(short)}</th>`))
           .concat(['<th>Status</th>','<th class="gestor-only">Ações</th>']);
@@ -836,6 +875,7 @@
       $("lacTbody").innerHTML = rows.map(r => {
         const obs = sealObs(r);
         const tds = [
+          dotEntrega(r),
           `<td>${esc(r.point_label || r.point_id || "—")}</td>`,
           `<td>${fmtDate(r.local_timestamp)}</td>`,
           ...LACRES.map(([k]) => `<td>${esc(lacreVal(r, k))}</td>`),
@@ -854,6 +894,7 @@
       const rows = window._filteredSeals || [];
       if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
       const data = rows.map(r => ({
+        "Situação": SIT_TITULO[statusEntrega(r)],
         "Ponto": r.point_label || r.point_id || "",
         "Ponto ID": r.point_id || "",
         "Data/Hora": fmtDate(r.local_timestamp),
