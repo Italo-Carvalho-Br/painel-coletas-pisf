@@ -391,13 +391,22 @@
           <div class="kpi card"><div class="n" id="vkHoje">0</div><div class="l">Hoje</div></div>
           <div class="kpi card"><div class="n" id="vkSemana">0</div><div class="l">Últimos 7 dias</div></div>
           <div class="kpi card"><div class="n" id="vkPontos">0</div><div class="l">Pontos distintos</div></div>
+          <div class="kpi card"><div class="n" id="vkTecnicos">0</div><div class="l">Técnicos</div></div>
         </div>
 
         <div class="toolbar card">
+          <div class="field"><label>Ponto</label><br/><select id="vfPonto"><option value="">Todos</option></select></div>
+          <div class="field"><label>Técnico</label><br/><select id="vfTecnico"><option value="">Todos</option></select></div>
+          <div class="field"><label>De</label><br/><input id="vfDe" type="date" /></div>
+          <div class="field"><label>Até</label><br/><input id="vfAte" type="date" /></div>
+          <div class="field"><label>Status</label><br/>
+            <select id="vfStatus"><option value="">Todos</option><option value="1">Sincronizado</option><option value="0">Pendente</option></select>
+          </div>
           <div class="field"><label>Busca</label><br/><input id="vBusca" type="text" placeholder="ponto, campanha ou e-mail…" /></div>
           <div class="spacer"></div>
           <button class="btn ghost small" id="vclearBtn">Limpar</button>
           <button class="btn small" id="vexportBtn">⬇ Exportar Excel</button>
+          <button class="btn small novo gestor-only ctrl" id="novoVetBtn">+ Novo registro</button>
         </div>
 
         <div class="panel card">
@@ -1330,6 +1339,16 @@
     }
     $("novoColetaBtn").addEventListener("click", () => openColetaForm(null));
     $("novoLacreBtn").addEventListener("click", () => openLacreForm(null));
+    if (!$("vTbody").dataset.wired) {
+      $("vTbody").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]"); if (!b || !isGestor) return;
+        const id = b.dataset.id, lista = allVetor[vAtivo] || [];
+        if (b.dataset.act === "edit") openVetorForm(vAtivo, lista.find(r => r.id === id));
+        else excluir(VET_TIPO[vAtivo].col, id, lista, `registro de ${VET_TIPO[vAtivo].nome}`);
+      });
+      $("vTbody").dataset.wired = "1";
+    }
+    $("novoVetBtn").addEventListener("click", () => openVetorForm(vAtivo, null));
 
     // ====================================================================
     //  VETORES E HOSPEDEIROS (3 atividades) — visualização + exportação
@@ -1395,6 +1414,169 @@
       },
     };
 
+    // ---------- CRUD de Vetores (gestor): editar / excluir / novo ----------
+    const VET_TIPO = {
+      aspirador: { col: "vetor_aspirador", amostrador: "Aspirador Entomológico", nome: "Aspirador" },
+      ovitrampa: { col: "vetor_ovitrampa", amostrador: "Ovitrampa", nome: "Ovitrampa" },
+      shannon:   { col: "vetor_shannon",   amostrador: "Shannon Adaptada", nome: "Shannon" },
+    };
+    // Controles da caracterização (espelham CaracterizacaoAmbiental do app).
+    const vetBoolSel = (id, v) => `<select id="${id}"><option value=""${v == null ? " selected" : ""}>—</option><option value="sim"${v === true ? " selected" : ""}>Sim</option><option value="nao"${v === false ? " selected" : ""}>Não</option></select>`;
+    const vetSingleSel = (id, opts, v) => `<select id="${id}"><option value="">—</option>${opts.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    const vetMulti = (id, opts, arr) => `<div class="chips">${opts.map((o, i) => `<label><input type="checkbox" id="${id}_${i}" value="${esc(o)}"${(arr || []).includes(o) ? " checked" : ""}/>${esc(o)}</label>`).join("")}</div>`;
+    const lerVBool = (id) => { const v = val(id); return v === "sim" ? true : v === "nao" ? false : null; };
+    const lerVMulti = (id, opts) => opts.filter((_, i) => { const e = $(`${id}_${i}`); return e && e.checked; });
+    function vetCaracForm(c) {
+      c = c || {};
+      return `<div class="sec-title">Caracterização geral da área</div>
+        <div class="fgrid">
+          <div class="fld"><label>Vegetação</label>${vetSingleSel("vc_vegetacao", ["Presente", "Ausente"], c.vegetacao || "")}</div>
+          <div class="fld"><label>Condição da vegetação</label>${vetSingleSel("vc_vegetacao_condicao", ["Verde", "Seca"], c.vegetacao_condicao || "")}</div>
+          <div class="fld"><label>Acúmulo de resíduos</label>${vetBoolSel("vc_residuos", c.residuos)}</div>
+          <div class="fld"><label>Ocupação humana</label>${vetBoolSel("vc_ocupacao", c.ocupacao)}</div>
+          <div class="fld full"><label>Recreação</label>${vetMulti("vc_recreacao", ["Pesca"], c.recreacao)}</div>
+          <div class="fld"><label>Recreação — outros</label><input id="vc_recreacao_outros" value="${esc(c.recreacao_outros || "")}"/></div>
+          <div class="fld"><label>Animais de pastagem</label>${vetBoolSel("vc_animais_pastagem", c.animais_pastagem)}</div>
+          <div class="fld full"><label>Espécies de animais</label>${vetMulti("vc_animais", ["Caprinos", "Bovinos", "Equinos", "Outros"], c.animais)}</div>
+          <div class="fld"><label>Animais — outros</label><input id="vc_animais_outros" value="${esc(c.animais_outros || "")}"/></div>
+          <div class="fld full"><label>Vestígios</label>${vetMulti("vc_vestigios", ["Fezes", "Pegadas"], c.vestigios)}</div>
+          <div class="fld"><label>Próximo a estrada</label>${vetBoolSel("vc_estrada", c.estrada)}</div>
+          <div class="fld"><label>Trânsito de veículos</label>${vetBoolSel("vc_veiculos", c.veiculos)}</div>
+          <div class="fld full"><label>Tipos de veículos</label>${vetMulti("vc_veiculos_tipos", ["Carro", "Caminhão", "Moto"], c.veiculos_tipos)}</div>
+          <div class="fld"><label>Vento</label>${vetSingleSel("vc_vento", ["Fraco", "Moderado"], c.vento || "")}</div>
+        </div>`;
+    }
+    // Lê a caracterização aplicando as MESMAS regras de nulidade do app (toMap).
+    function lerVetCarac() {
+      const vegetacao = val("vc_vegetacao") || null;
+      const animaisPastagem = lerVBool("vc_animais_pastagem");
+      const veiculos = lerVBool("vc_veiculos");
+      const animais = animaisPastagem === true ? lerVMulti("vc_animais", ["Caprinos", "Bovinos", "Equinos", "Outros"]) : [];
+      return {
+        vegetacao,
+        vegetacao_condicao: vegetacao === "Presente" ? (val("vc_vegetacao_condicao") || null) : null,
+        residuos: lerVBool("vc_residuos"),
+        ocupacao: lerVBool("vc_ocupacao"),
+        recreacao: lerVMulti("vc_recreacao", ["Pesca"]),
+        recreacao_outros: val("vc_recreacao_outros").trim(),
+        animais_pastagem: animaisPastagem,
+        animais,
+        animais_outros: (animaisPastagem === true && animais.includes("Outros")) ? val("vc_animais_outros").trim() : "",
+        vestigios: animaisPastagem === true ? lerVMulti("vc_vestigios", ["Fezes", "Pegadas"]) : [],
+        estrada: lerVBool("vc_estrada"),
+        veiculos,
+        veiculos_tipos: veiculos === true ? lerVMulti("vc_veiculos_tipos", ["Carro", "Caminhão", "Moto"]) : [],
+        vento: val("vc_vento") || null,
+      };
+    }
+    function openVetorForm(tipo, rec) {
+      const p = rec || {}, cfg = VET_TIPO[tipo], parts = partsFromTs(p.local_timestamp);
+      let especifico;
+      if (tipo === "ovitrampa") {
+        especifico = `<div class="sec-title">Instalação</div>
+          <div class="fgrid">
+            <div class="fld"><label>Armadilha</label><input id="v_armadilha" value="${esc(p.armadilha || "Ovitrampa 1 e 2")}"/></div>
+            <div class="fld"><label>Data da instalação *</label><input type="date" id="v_inst_data" value="${esc(p.instalacao_data || parts.date || hoje())}"/></div>
+            <div class="fld"><label>Hora da instalação</label><input type="time" id="v_inst_hora" value="${esc(p.instalacao_hora || "")}"/></div>
+          </div>
+          <div class="sec-title">Retirada</div>
+          <div class="fgrid">
+            <div class="fld"><label>Data da retirada</label><input type="date" id="v_ret_data" value="${esc(p.retirada_data || "")}"/></div>
+            <div class="fld"><label>Hora da retirada</label><input type="time" id="v_ret_hora" value="${esc(p.retirada_hora || "")}"/></div>
+            <div class="fld"><label>Situação da retirada</label>${vetSingleSel("v_ret_ocor", ["Retirada normalmente", "Não localizada", "Danificada", "Outra ocorrência"], p.retirada_ocorrencia || "")}</div>
+            <div class="fld"><label>Estado do ciclo</label>${vetSingleSel("v_estado", ["rascunho", "ativa", "encerrada"], p.estado || "ativa")}</div>
+          </div>`;
+      } else {
+        especifico = `<div class="sec-title">Coleta</div>
+          <div class="fgrid">
+            <div class="fld"><label>Data da coleta *</label><input type="date" id="v_data" value="${esc(p.data_coleta || parts.date || hoje())}"/></div>
+            <div class="fld"><label>Hora de início</label><input type="time" id="v_inicio" value="${esc(p.hora_inicio || parts.time || "")}"/></div>
+            <div class="fld"><label>Hora de término</label><input type="time" id="v_termino" value="${esc(p.hora_termino || "")}"/></div>
+            ${tipo === "shannon" ? `<div class="fld"><label>Fase lunar</label>${vetSingleSel("v_fase", ["Nova", "Crescente", "Cheia", "Minguante"], p.fase_lunar || "")}</div>` : ""}
+          </div>`;
+      }
+      const obsSec = tipo === "ovitrampa"
+        ? `<div class="fld full"><label>Observações da instalação</label><textarea id="v_obs" rows="2">${esc(p.observacoes_instalacao || "")}</textarea></div>
+           <div class="fld full"><label>Observações da retirada</label><textarea id="v_obs2" rows="2">${esc(p.retirada_obs || "")}</textarea></div>`
+        : `<div class="fld full"><label>Observações</label><textarea id="v_obs" rows="2" placeholder="Opcional">${esc(p.observacoes || "")}</textarea></div>
+           <div class="fld"><label>Situação</label>${vetSingleSel("v_concluido", ["Concluído", "Rascunho"], p.concluido === false ? "Rascunho" : "Concluído")}</div>`;
+      const body = `
+        <div class="sec-title">Informações gerais</div>
+        <div class="fgrid">
+          <div class="fld full"><label>Ponto *</label>${pointSelect("v_point", p.point_id, p.point_label)}</div>
+          <div class="fld full"><label>Campanha</label><input id="v_campanha" value="${esc(p.campanha || "")}" placeholder="Ex.: 34ª Campanha"/></div>
+        </div>
+        ${especifico}
+        <div class="sec-title">Condições ambientais</div>
+        <div class="fgrid">
+          <div class="fld"><label>Temp. mín (°C)</label><input id="v_tmin" inputmode="decimal" value="${esc(numBR(p.temp_min))}"/></div>
+          <div class="fld"><label>Temp. máx (°C)</label><input id="v_tmax" inputmode="decimal" value="${esc(numBR(p.temp_max))}"/></div>
+          <div class="fld"><label>Umidade (%)</label><input id="v_umid" inputmode="decimal" value="${esc(numBR(p.umidade))}"/></div>
+          <div class="fld"><label>Chuva</label>${vetBoolSel("v_chuva", p.chuva)}</div>
+        </div>
+        ${vetCaracForm(p.caracterizacao)}
+        <div class="sec-title">Observações</div>
+        <div class="fgrid">${obsSec}</div>`;
+      openModal(rec ? `Editar ${cfg.nome}` : `Novo ${cfg.nome}`, body, () => salvarVetor(tipo, rec));
+    }
+    async function salvarVetor(tipo, rec) {
+      const cfg = VET_TIPO[tipo], pointId = val("v_point");
+      if (!pointId) return setMsg("Selecione o ponto."), false;
+      const pt = POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
+      const dataBase = tipo === "ovitrampa" ? val("v_inst_data") : val("v_data");
+      const horaBase = tipo === "ovitrampa" ? val("v_inst_hora") : val("v_inicio");
+      if (!dataBase) return setMsg("Informe a data."), false;
+      const [Y, M, D] = dataBase.split("-").map(Number);
+      const [h, mi] = (horaBase || "00:00").split(":").map(Number);
+      const dt = new Date(Y, M - 1, D, h || 0, mi || 0);
+      const now = new Date(), id = rec ? rec.id : uuid();
+      const docData = {
+        data_id: id,
+        point_id: pt.id,
+        point_label: pt.label,
+        user_id: rec ? rec.user_id : GESTOR_UID,
+        campanha: val("v_campanha").trim(),
+        amostrador: cfg.amostrador,
+        temp_min: parseNum(val("v_tmin")),
+        temp_max: parseNum(val("v_tmax")),
+        umidade: parseNum(val("v_umid")),
+        chuva: lerVBool("v_chuva"),
+        caracterizacao: lerVetCarac(),
+        synced: true,
+        local_timestamp: Timestamp.fromDate(dt),
+        criado_em: (rec && rec.criado_em) ? rec.criado_em : Timestamp.fromDate(now),
+        modificado_em: Timestamp.fromDate(now),
+        server_timestamp: serverTimestamp(),
+        editado_por: GESTOR_EMAIL,
+        editado_em: serverTimestamp(),
+      };
+      if (tipo === "ovitrampa") {
+        Object.assign(docData, {
+          armadilha: val("v_armadilha").trim(),
+          instalacao_data: dataBase,
+          instalacao_hora: horaBase || null,
+          retirada_data: val("v_ret_data") || null,
+          retirada_hora: val("v_ret_hora") || null,
+          retirada_ocorrencia: val("v_ret_ocor") || null,
+          retirada_obs: val("v_obs2").trim(),
+          observacoes_instalacao: val("v_obs").trim(),
+          estado: val("v_estado") || "ativa",
+        });
+      } else {
+        Object.assign(docData, {
+          data_coleta: dataBase,
+          hora_inicio: horaBase || null,
+          hora_termino: val("v_termino") || null,
+          observacoes: val("v_obs").trim(),
+          concluido: val("v_concluido") !== "Rascunho",
+        });
+        if (tipo === "shannon") docData.fase_lunar = val("v_fase") || null;
+      }
+      if (!rec) { docData.criado_por = GESTOR_EMAIL; docData.origem = "painel"; }
+      await setDoc(doc(db, cfg.col, id), docData);
+      return true;
+    }
+
     // Caracterização ambiental achatada (comum às 3 fichas) — p/ exportação.
     function caracCols(r) {
       const c = r.caracterizacao || {};
@@ -1433,16 +1615,31 @@
       }
     }
 
+    function buildVetorFilterOptions() {
+      const todos = allVetor[vAtivo] || [];
+      const pontos = [...new Set(todos.map(r => r.point_label || r.point_id).filter(Boolean))].sort();
+      const tecnicos = [...new Set(todos.map(r => tech(r)))].sort();
+      fillSelect($("vfPonto"), pontos);
+      fillSelect($("vfTecnico"), tecnicos);
+    }
     function vetorFiltrados() {
+      const ponto = $("vfPonto").value, tecnico = $("vfTecnico").value, status = $("vfStatus").value;
+      const de = $("vfDe").value ? new Date($("vfDe").value + "T00:00:00") : null;
+      const ate = $("vfAte").value ? new Date($("vfAte").value + "T23:59:59") : null;
       const busca = $("vBusca").value.trim().toLowerCase();
-      let rows = allVetor[vAtivo] || [];
-      if (busca) {
-        rows = rows.filter(r => {
+      return (allVetor[vAtivo] || []).filter(r => {
+        const d = tsToDate(r.local_timestamp);
+        if (ponto && (r.point_label || r.point_id) !== ponto) return false;
+        if (tecnico && tech(r) !== tecnico) return false;
+        if (status !== "" && String(r.synced ? 1 : 0) !== status) return false;
+        if (de && (!d || d < de)) return false;
+        if (ate && (!d || d > ate)) return false;
+        if (busca) {
           const hay = `${r.point_label || ""} ${r.campanha || ""} ${tech(r)}`.toLowerCase();
-          return hay.includes(busca);
-        });
-      }
-      return rows;
+          if (!hay.includes(busca)) return false;
+        }
+        return true;
+      });
     }
 
     function renderVetor() {
@@ -1450,10 +1647,11 @@
       $("vTitulo").innerHTML = `${esc(cfg.titulo)} <span class="count" id="vCount"></span>`;
       // Cabeçalho
       $("vThead").innerHTML =
-        `<tr>${cfg.cols.map(([h]) => `<th>${esc(h)}</th>`).join("")}</tr>`;
+        `<tr>${cfg.cols.map(([h]) => `<th>${esc(h)}</th>`).join("")}<th class="gestor-only">Ações</th></tr>`;
+      buildVetorFilterOptions();
       const rows = vetorFiltrados();
       $("vTbody").innerHTML = rows.map(r =>
-        `<tr>${cfg.cols.map(([, f]) => `<td>${esc(f(r))}</td>`).join("")}</tr>`).join("");
+        `<tr>${cfg.cols.map(([, f]) => `<td>${esc(f(r))}</td>`).join("")}<td class="gestor-only">${acoesCell(r.id)}</td></tr>`).join("");
       $("vEmpty").classList.toggle("hidden", rows.length > 0);
       $("vCount").textContent = `(${rows.length})`;
 
@@ -1467,6 +1665,7 @@
       $("vkHoje").textContent = todos.filter(r => inRange(r, startToday)).length;
       $("vkSemana").textContent = todos.filter(r => inRange(r, week)).length;
       $("vkPontos").textContent = new Set(todos.map(r => r.point_id).filter(Boolean)).size;
+      $("vkTecnicos").textContent = new Set(todos.map(r => r.user_id).filter(Boolean)).size;
       window._vFiltrados = rows;
     }
 
@@ -1480,8 +1679,12 @@
     $("vtAspirador").addEventListener("click", () => setVetorAba("aspirador"));
     $("vtOvitrampa").addEventListener("click", () => setVetorAba("ovitrampa"));
     $("vtShannon").addEventListener("click", () => setVetorAba("shannon"));
-    $("vBusca").addEventListener("input", renderVetor);
-    $("vclearBtn").addEventListener("click", () => { $("vBusca").value = ""; renderVetor(); });
+    ["vfPonto","vfTecnico","vfDe","vfAte","vfStatus","vBusca"].forEach(id =>
+      $(id).addEventListener("input", renderVetor));
+    $("vclearBtn").addEventListener("click", () => {
+      ["vfPonto","vfTecnico","vfDe","vfAte","vfStatus","vBusca"].forEach(id => $(id).value = "");
+      renderVetor();
+    });
 
     $("vexportBtn").addEventListener("click", () => {
       const cfg = VETOR_CFG[vAtivo];
