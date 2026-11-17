@@ -567,7 +567,7 @@
       const d = tsToDate(ts);
       if (!d) return "—";
       return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo",
-        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "");
     }
     const tech = (r) => userEmails[r.user_id] || r.user_id || "—";
     // --- Leitores da estrutura de dados da coleta -----------------------------
@@ -705,9 +705,9 @@
         const sup = secao(r, "superficial");
         const prof = secao(r, "profundidade");
         return {
-          "Data/Hora": fmtDate(r.local_timestamp),
           "Ponto": r.point_label || r.point_id || "",
           "Ponto ID": r.point_id || "",
+          "Data/Hora": fmtDate(r.local_timestamp),
           "Técnico": tech(r),
           "Prof. reservatório (m)": profReservatorio(r),
 
@@ -854,10 +854,12 @@
       const rows = window._filteredSeals || [];
       if (!rows.length) { alert("Nada para exportar com os filtros atuais."); return; }
       const data = rows.map(r => ({
-        "Data/Hora": fmtDate(r.local_timestamp),
         "Ponto": r.point_label || r.point_id || "",
         "Ponto ID": r.point_id || "",
+        "Data/Hora": fmtDate(r.local_timestamp),
         "Técnico": tech(r),
+        "Entrega UNEB": brDate(entregaLab(r, "uneb")),
+        "Entrega UFPE": brDate(entregaLab(r, "ufpe")),
         ...Object.fromEntries(LACRES.map(([k, full]) => [full, lacreVal(r, k)])),
         ...Object.fromEntries(ITENS.map(([k, full]) => [full, itemVal(r, k)])),
         "Observações": sealObs(r),
@@ -1166,7 +1168,8 @@
         </div>
         <div class="sec-title">Entrega e campanha</div>
         <div class="fgrid">
-          <div class="fld"><label>Data de entrega</label><input type="date" id="l_entrega" value="${esc(p.data_entrega||"")}"/></div>
+          <div class="fld"><label>Data de entrega UNEB</label><input type="date" id="l_entrega_uneb" value="${esc(p.data_entrega_uneb||p.data_entrega||"")}"/></div>
+          <div class="fld"><label>Data de entrega UFPE</label><input type="date" id="l_entrega_ufpe" value="${esc(p.data_entrega_ufpe||p.data_entrega||"")}"/></div>
           <div class="fld"><label>Local de entrega</label><input id="l_local" value="${esc(p.local_entrega||"")}" placeholder="Ex.: UNEB, UFPE…"/></div>
           <div class="fld full"><label>Campanha</label><input id="l_campanha" value="${esc(p.campanha||"")}" placeholder="Ex.: 34ª Campanha"/></div>
         </div>
@@ -1224,7 +1227,8 @@
         synced: true,
         lacres, itens,
         observacoes: val("l_obs").trim(),
-        data_entrega: val("l_entrega") || "",
+        data_entrega_uneb: val("l_entrega_uneb") || "",
+        data_entrega_ufpe: val("l_entrega_ufpe") || "",
         local_entrega: val("l_local").trim(),
         campanha: val("l_campanha").trim(),
         editado_por: GESTOR_EMAIL,
@@ -1456,6 +1460,14 @@
       vet_shannon: () => allVetor.shannon,
     };
 
+    // Entrega por laboratório: Sedimentos/Cianobactérias → UNEB; Macrófitas/
+    // Zooplâncton → UFPE. Cada lacre guarda as DUAS datas (data_entrega_uneb /
+    // data_entrega_ufpe); registros antigos (data_entrega única) servem de
+    // fallback. Na Rastreabilidade, subtipo "lacre"=UNEB e "item"=UFPE.
+    const LAB_FICHA = { sedimentos: "uneb", cianobacterias: "uneb", macrofitas: "ufpe", zooplancton: "ufpe" };
+    const LAB_NOME = { ufpe: "UFPE", uneb: "UNEB" };
+    const entregaLab = (r, lab) => r["data_entrega_" + lab] || r.data_entrega || "";
+
     function tsParts(ts) {
       const d = tsToDate(ts);
       if (!d) return { data: "", hora: "", key: "" };
@@ -1533,9 +1545,10 @@
       const tipo = $("fkTipo").value;
       if (tipo === "rastreabilidade") {
         const sub = SUBTIPOS.find(s => s.key === $("fkPonto").value);
+        const lab = sub && sub.kind === "item" ? "ufpe" : "uneb";
         const datas = sub ? [...new Set(allSeals
-          .filter(r => r.data_entrega && amostraPresente(r, sub))
-          .map(r => String(r.data_entrega).slice(0, 10)))]
+          .filter(r => entregaLab(r, lab) && amostraPresente(r, sub))
+          .map(r => String(entregaLab(r, lab)).slice(0, 10)))]
           .sort((a, b) => b.localeCompare(a)) : [];
         $("fkData").innerHTML = '<option value="">—</option>' +
           datas.map(d => `<option value="${d}">${esc(brDate(d))}</option>`).join("");
@@ -1696,7 +1709,7 @@
     function valoresFicha(tipo, r) {
       const t = tsParts(r.local_timestamp);
       const base = { data_coleta: t.data, hora_coleta: t.hora, ponto: pontoDe(r),
-                     data_entrega: brDate(r.data_entrega) };
+                     data_entrega: brDate(entregaLab(r, LAB_FICHA[tipo])) };
       if (tipo === "cianobacterias")
         return { ...base, cianobacteria: lacreVal(r, "cianobacterias_polietileno") };
       if (tipo === "zooplancton")
@@ -1839,14 +1852,15 @@
     async function gerarRastreabPDF(subKey, dataEnt) {
       const sub = SUBTIPOS.find(s => s.key === subKey);
       if (!sub) return 0;
+      const lab = sub.kind === "item" ? "ufpe" : "uneb";
       const linhas = allSeals
-        .filter(r => String(r.data_entrega || "").slice(0, 10) === dataEnt && amostraPresente(r, sub))
+        .filter(r => String(entregaLab(r, lab)).slice(0, 10) === dataEnt && amostraPresente(r, sub))
         .map(r => {
           const t = tsParts(r.local_timestamp);
           return {
             data: t.data, key: t.key, ponto: pontoDe(r),
             etiqueta: sub.kind === "lacre" ? String((r.lacres || {})[sub.key]).trim() : "-",
-            local: r.local_entrega || "",
+            local: r.local_entrega || LAB_NOME[lab],
           };
         })
         .sort((a, b) => (a.key + a.ponto).localeCompare(b.key + b.ponto));
@@ -1882,7 +1896,7 @@
       const out = await pdfDoc.save();
       const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
       window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setTimeout(() => URL.revokeObjectURL(url), 15 * 60 * 1000);
       return linhas.length;
     }
 
