@@ -141,6 +141,22 @@
     .sit-dot.verde { background: #2E9E5B; }
     .sit-dot.laranja { background: var(--warning); }
     .sit-dot.vermelho { background: var(--error); }
+    /* Resumo da aba Fichas (pontos com a amostra + status de entrega). */
+    #fichaResumo.resumo { padding: 0; overflow: hidden; margin-top: 14px; }
+    .resumo-top { padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 13px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .resumo-leg { margin-left: auto; display: inline-flex; align-items: center;
+      gap: 4px; color: var(--hint); font-size: 12px; }
+    .resumo-leg .sit-dot { margin-left: 8px; width: 11px; height: 11px; }
+    .resumo-wrap { max-height: 360px; overflow: auto; }
+    .resumo-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .resumo-tbl th, .resumo-tbl td { text-align: left; padding: 8px 14px;
+      border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .resumo-tbl th { background: #F2F6F3; position: sticky; top: 0; font-weight: 700; z-index: 1; }
+    .resumo-tbl td.c { text-align: center; width: 44px; }
+    .resumo-tbl tbody tr { cursor: pointer; }
+    .resumo-tbl tbody tr:hover td { background: #e7f1ea; }
+    .resumo-vazio { padding: 16px; color: var(--hint); text-align: center; }
     .rowbtn { background: transparent; border: 1px solid var(--border); border-radius: 8px;
       padding: 4px 8px; font-size: 13px; margin-right: 4px; line-height: 1; }
     .rowbtn:hover { background: #F2F6F3; }
@@ -415,6 +431,7 @@
           <button class="btn small" id="fkGerar">Gerar ficha</button>
           <button class="btn ghost small hidden" id="fkPrint">🖨️ Imprimir / PDF</button>
         </div>
+        <div id="fichaResumo" class="card hidden"></div>
         <div id="fichaPreview" class="vazio">Selecione a ficha, o ponto e a data e clique em “Gerar ficha”.</div>
       </div><!-- /viewFichas -->
     </main>
@@ -1554,6 +1571,7 @@
       const v = (r.itens || {})[sub.key];
       return v === true || v === "Sim" || v === 1 || v === "1";
     }
+    const SUB_BY_KEY = Object.fromEntries(SUBTIPOS.map(s => [s.key, s]));
 
     function fichaPopularPontos() {
       const tipo = $("fkTipo").value;
@@ -1615,7 +1633,85 @@
       $("fkData").innerHTML = '<option value="">—</option>' +
         datas.map(([k, d]) => `<option value="${k}">${esc(d)}</option>`).join("");
     }
+    // ---- Resumo da aba Fichas: ao escolher a ficha, lista abaixo os pontos que
+    // têm aquela amostra e o status da entrega. Clicar numa linha preenche os
+    // seletores Ponto/Data. ---------------------------------------------------
+    const FICHA_SUBTIPOS = {
+      sedimentos: ["fitoplancton_superficie", "fitoplancton_fundo", "sed_margem_zoobentos_quadrado", "sed_margem_zoobentos_peneira", "sed_margem_granulometrica", "macroinvertebrados_fital", "sed_fundo_zoobentos_draga", "sed_fundo_granulometrica_draga"],
+      cianobacterias: ["cianobacterias_polietileno"],
+      macrofitas: ["biomassa_macrofita_quadrado", "levantamento_floristico"],
+      zooplancton: ["zooplancton"],
+    };
+    // Status da entrega DESTA ficha (laboratório específico de LAB_FICHA[tipo]).
+    function statusFicha(r, tipo) {
+      const d = entregaLab(r, LAB_FICHA[tipo]);
+      if (!d) return "vermelho";
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const dd = new Date(String(d).slice(0, 10) + "T00:00:00");
+      return (!isNaN(dd) && dd <= hoje) ? "verde" : "laranja";
+    }
+    function selecionarResumo(ponto, dataKey) {
+      $("fkPonto").value = ponto;
+      fichaPopularDatas();
+      if (dataKey) $("fkData").value = dataKey;
+    }
+    function renderResumoFicha() {
+      const tipo = $("fkTipo").value, box = $("fichaResumo");
+      if (!tipo || tipo === "rastreabilidade") { box.className = "card hidden"; box.innerHTML = ""; return; }
+      const temEntrega = !!LAB_FICHA[tipo], ehVet = VET_FICHAS.has(tipo);
+      let regs;
+      if (temEntrega) {
+        const subs = FICHA_SUBTIPOS[tipo];
+        regs = allSeals.filter(r => subs.some(k => amostraPresente(r, SUB_BY_KEY[k])));
+      } else {
+        regs = (FICHA_SRC[tipo] ? FICHA_SRC[tipo]() : []);
+      }
+      let linhas;
+      if (ehVet) {
+        const vistos = new Set(); linhas = [];
+        for (const r of regs) {
+          const ponto = pontoDe(r), camp = r.campanha || "", k = ponto + "|" + camp;
+          if (!ponto || vistos.has(k)) continue; vistos.add(k);
+          linhas.push({ ponto, col2: camp || "—", dataKey: camp, status: null, entrega: "" });
+        }
+      } else {
+        linhas = regs.map(r => {
+          const t = tsParts(r.local_timestamp);
+          return { ponto: pontoDe(r), col2: t.data, dataKey: t.key,
+            status: temEntrega ? statusFicha(r, tipo) : null,
+            entrega: temEntrega ? entregaLab(r, LAB_FICHA[tipo]) : "" };
+        });
+      }
+      linhas.sort((a, b) => (a.ponto + (a.dataKey || "")).localeCompare(b.ponto + (b.dataKey || "")));
+      const nome = $("fkTipo").selectedOptions[0] ? $("fkTipo").selectedOptions[0].textContent : tipo;
+      if (!linhas.length) {
+        box.className = "card resumo";
+        box.innerHTML = `<div class="resumo-top"><b>0</b> registros com <b>${esc(nome)}</b></div>` +
+          `<div class="resumo-vazio">Nenhum registro com esse tipo de amostra.</div>`;
+        return;
+      }
+      const col2lab = ehVet ? "Campanha" : "Data";
+      const head = `<tr><th></th><th>Ponto</th><th>${col2lab}</th>${temEntrega ? "<th>Entrega</th>" : ""}</tr>`;
+      const body = linhas.map(l => {
+        const dot = l.status ? `<span class="sit-dot ${l.status}" title="${SIT_TITULO[l.status]}"></span>` : "";
+        const ent = temEntrega ? `<td>${l.entrega ? esc(brDate(l.entrega)) : "—"}</td>` : "";
+        return `<tr data-ponto="${esc(l.ponto)}" data-datakey="${esc(l.dataKey || "")}">` +
+          `<td class="c">${dot}</td><td>${esc(l.ponto)}</td><td>${esc(l.col2)}</td>${ent}</tr>`;
+      }).join("");
+      const legenda = temEntrega
+        ? `<span class="resumo-leg"><span class="sit-dot verde"></span>entregue<span class="sit-dot laranja"></span>agendada<span class="sit-dot vermelho"></span>sem data</span>`
+        : "";
+      box.className = "card resumo";
+      box.innerHTML = `<div class="resumo-top"><b>${linhas.length}</b> registro(s) com <b>${esc(nome)}</b>${legenda}</div>` +
+        `<div class="resumo-wrap"><table class="resumo-tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+      box.querySelector(".resumo-tbl tbody").addEventListener("click", (e) => {
+        const tr = e.target.closest("tr[data-ponto]"); if (!tr) return;
+        selecionarResumo(tr.dataset.ponto, tr.dataset.datakey);
+      });
+    }
+
     $("fkTipo").addEventListener("change", fichaPopularPontos);
+    $("fkTipo").addEventListener("change", renderResumoFicha);
     $("fkPonto").addEventListener("change", fichaPopularDatas);
 
     function acharRegistro() {
