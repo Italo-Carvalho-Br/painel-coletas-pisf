@@ -1420,6 +1420,58 @@
       ovitrampa: { col: "vetor_ovitrampa", amostrador: "Ovitrampa", nome: "Ovitrampa" },
       shannon:   { col: "vetor_shannon",   amostrador: "Shannon Adaptada", nome: "Shannon" },
     };
+    // Pontos PRÓPRIOS de Vetores (Eixo Leste/Norte/Ramais) — NÃO são os pontos de
+    // água (POINTS). Espelha VetorPoints.all do app; atualizar aqui se mudar lá.
+    const VETOR_POINTS = [
+      { id: "EL-E1", label: "EL E1 - Reservatório Areias" },
+      { id: "EL-E2", label: "EL E2 - Reservatório Braúnas" },
+      { id: "EL-E3", label: "EL E3 - Reservatório Mandantes" },
+      { id: "EL-E4", label: "EL E4 - Reservatório Salgueiro" },
+      { id: "EL-E5", label: "EL E5 - Reservatório Muquém" },
+      { id: "EL-E6", label: "EL E6 - Reservatório Cacimba Nova" },
+      { id: "EL-E7", label: "EL E7 - Reservatório Bagres" },
+      { id: "EL-E8", label: "EL E8 - Reservatório Copiti" },
+      { id: "EL-E9", label: "EL E9 - Reservatório Moxotó" },
+      { id: "EL-E10", label: "EL E10 - Reservatório Barreiros" },
+      { id: "EL-E11", label: "EL E11 - Reservatório Campos" },
+      { id: "EL-E12", label: "EL E12 - Reservatório Barro Branco" },
+      { id: "EN-E13", label: "EN E13 - Reservatório Tucutu" },
+      { id: "EN-E14", label: "EN E14 - Reservatório Terra Nova" },
+      { id: "EN-E15", label: "EN E15 - Reservatório Serra Do Livramento" },
+      { id: "EN-E16", label: "EN E16 - Reservatório Mangueira" },
+      { id: "EN-E17", label: "EN E17 - Reservatório Negreiros" },
+      { id: "EN-E18", label: "EN E18 - Reservatório Milagres" },
+      { id: "EN-E19", label: "EN E19 - Reservatório Engº. Hilton Temóteo" },
+      { id: "EN-E20", label: "EN E20 - Reservatório Atalho" },
+      { id: "EN-E21", label: "EN E21 - Reservatório Porcos" },
+      { id: "EN-E22", label: "EN E22 - Reservatório Cana Brava" },
+      { id: "EN-E23", label: "EN E23 - Reservatório Cipó" },
+      { id: "EN-E24", label: "EN E24 - Reservatório Boi" },
+      { id: "EN-E25", label: "EN E25 - Reservatório Morros" },
+      { id: "EN-E26", label: "EN E26 - Reservatório Boa Vista" },
+      { id: "EN-E27", label: "EN E27 - Reservatório Caiçara" },
+      { id: "RA-I03", label: "RA I03 - Riacho Do Pau D’Arco - A Jusante Da Estação De Bombeamento" },
+      { id: "RA-I04", label: "RA I04 - Reservatório Cachoeira I - A Montante Da Barragem" },
+      { id: "RA-P01", label: "RA P01 - Canal C1 - Início Do Canal, A Jusante De Barro Branco" },
+      { id: "RA-P02", label: "RA P02 - Canal C8 - A Montante Do Reservatório Negros" },
+      { id: "RA-P03", label: "RA P03 - Riacho Dos Negros - A Montante Do Reservatório Negros" },
+      { id: "RA-P06", label: "RA P06 - Riacho Dos Negros - A Jusante Da Barragem" },
+      { id: "RA-P07", label: "RA P07 - Canal C9 - A Jusante Do Reservatório Negros" },
+      { id: "RA-P08", label: "RA P08 - Canal C13 - A Montante Do Reservatório Ipojuca" },
+      { id: "RA-P09", label: "RA P09 - Rio Ipojuca - A Montante Do Reservatório Ipojuca" },
+      { id: "RA-P11", label: "RA P11 - Reservatório Projetado Ipojuca - A Montante Do Reservatório Ipojuca" },
+      { id: "RA-P12", label: "RA P12 - Rio Ipojuca - A Jusante Da Barragem" },
+      { id: "RA-P13", label: "RA P13 - Rio Ipojuca - A Montante Do Reservatório Existente Pão De Açúcar" },
+      { id: "RA-P14", label: "RA P14 - Reservatório Pão De Açucar - A Montante Da Barragem" },
+      { id: "RA-P15", label: "RA P15 - Rio Ipojuca - A Jusante Do Reservatório Existente Pão De Açúcar" },
+    ];
+    function vetPointSelect(id, selId, selLabel) {
+      let opts = VETOR_POINTS.slice();
+      if (selId && !opts.some(p => p.id === selId)) opts = [{ id: selId, label: selLabel || selId }, ...opts];
+      return `<select id="${id}"><option value="">— selecione —</option>` +
+        opts.map(p => `<option value="${esc(p.id)}"${p.id === selId ? " selected" : ""}>${esc(p.label)}</option>`).join("") +
+        `</select>`;
+    }
     // Controles da caracterização (espelham CaracterizacaoAmbiental do app).
     const vetBoolSel = (id, v) => `<select id="${id}"><option value=""${v == null ? " selected" : ""}>—</option><option value="sim"${v === true ? " selected" : ""}>Sim</option><option value="nao"${v === false ? " selected" : ""}>Não</option></select>`;
     const vetSingleSel = (id, opts, v) => `<select id="${id}"><option value="">—</option>${opts.map(o => `<option${o === v ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
@@ -1503,7 +1555,7 @@
       const body = `
         <div class="sec-title">Informações gerais</div>
         <div class="fgrid">
-          <div class="fld full"><label>Ponto *</label>${pointSelect("v_point", p.point_id, p.point_label)}</div>
+          <div class="fld full"><label>Ponto *</label>${vetPointSelect("v_point", p.point_id, p.point_label)}</div>
           <div class="fld full"><label>Campanha</label><input id="v_campanha" value="${esc(p.campanha || "")}" placeholder="Ex.: 34ª Campanha"/></div>
         </div>
         ${especifico}
@@ -1522,7 +1574,7 @@
     async function salvarVetor(tipo, rec) {
       const cfg = VET_TIPO[tipo], pointId = val("v_point");
       if (!pointId) return setMsg("Selecione o ponto."), false;
-      const pt = POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
+      const pt = VETOR_POINTS.find(p => p.id === pointId) || { id: pointId, label: (rec && rec.point_label) || pointId };
       const dataBase = tipo === "ovitrampa" ? val("v_inst_data") : val("v_data");
       const horaBase = tipo === "ovitrampa" ? val("v_inst_hora") : val("v_inicio");
       if (!dataBase) return setMsg("Informe a data."), false;
