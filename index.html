@@ -435,7 +435,11 @@
             </select>
           </div>
           <div class="field"><label id="fkPontoLab">Ponto</label><br/><select id="fkPonto"><option value="">—</option></select></div>
-          <div class="field"><label id="fkDataLab">Data</label><br/><select id="fkData"><option value="">—</option></select></div>
+          <div class="field" id="fkDataField"><label id="fkDataLab">Data</label><br/><select id="fkData"><option value="">—</option></select></div>
+          <div class="field hidden" id="fkRangeField"><label>Entrega — De / Até</label><br/>
+            <input type="date" id="fkDe" style="min-width:140px"/>
+            <input type="date" id="fkAte" style="min-width:140px"/>
+          </div>
           <div class="spacer"></div>
           <button class="btn small" id="fkGerar">Gerar ficha</button>
           <button class="btn ghost small hidden" id="fkPrint">🖨️ Imprimir / PDF</button>
@@ -1832,12 +1836,14 @@
 
     function fichaPopularPontos() {
       const tipo = $("fkTipo").value;
-      if (tipo === "rastreabilidade") {
+      const ehRastre = (tipo === "rastreabilidade");
+      // Rastreabilidade usa intervalo De/Até; as demais fichas usam o seletor Data.
+      $("fkRangeField").classList.toggle("hidden", !ehRastre);
+      $("fkDataField").classList.toggle("hidden", ehRastre);
+      if (ehRastre) {
         $("fkPontoLab").textContent = "Amostra";
-        $("fkDataLab").textContent = "Data de entrega";
-        $("fkPonto").innerHTML = '<option value="">—</option>' +
+        $("fkPonto").innerHTML = '<option value="__all__">Todas as amostras</option>' +
           SUBTIPOS.map(s => `<option value="${s.key}">${esc(s.nome)}</option>`).join("");
-        $("fkData").innerHTML = '<option value="">—</option>';
         return;
       }
       if (VET_FICHAS.has(tipo)) {
@@ -1862,15 +1868,7 @@
     function fichaPopularDatas() {
       const tipo = $("fkTipo").value;
       if (tipo === "rastreabilidade") {
-        const sub = SUBTIPOS.find(s => s.key === $("fkPonto").value);
-        const lab = sub ? labDoSubtipo(sub.key) : "uneb";
-        const datas = sub ? [...new Set(allSeals
-          .filter(r => entregaLab(r, lab) && amostraPresente(r, sub))
-          .map(r => String(entregaLab(r, lab)).slice(0, 10)))]
-          .sort((a, b) => b.localeCompare(a)) : [];
-        $("fkData").innerHTML = '<option value="">—</option>' +
-          datas.map(d => `<option value="${d}">${esc(brDate(d))}</option>`).join("");
-        return;
+        return;   // usa os campos De/Até (fkDe/fkAte), não o seletor Data
       }
       if (VET_FICHAS.has(tipo)) {
         const ponto = $("fkPonto").value;
@@ -2249,56 +2247,81 @@
     // Ficha de Rastreabilidade (rastreabilidade.pdf): cabeçalho + tabela de amostras.
     const RASTREAB_COORDS = {"page":0,"header":{"data_entrega":[122.9,723.0],"amostra":[127.4,707.1],"local":[129.5,691.3],"quantidade":[220.7,675.4]},"cols":{"data":30,"ponto":136,"etiqueta":482},"rows":[638.3,622.5,606.7,590.8,575.0,559.1,543.3,527.5,511.6,495.8,479.9,464.7,450.1,435.4,420.8,406.1,391.5,376.9,362.2,347.6,332.9,318.3,303.7,289.0,274.4,259.7,245.1,230.5,215.8,201.2,186.5,171.9,157.3,142.6,128.0,113.3,98.7,83.8]};
 
-    // Reúne as amostras de um subtipo entregues numa data e preenche o PDF.
-    async function gerarRastreabPDF(subKey, dataEnt) {
-      const sub = SUBTIPOS.find(s => s.key === subKey);
-      if (!sub) return 0;
-      const lab = labDoSubtipo(sub.key);
-      const linhas = allSeals
-        .filter(r => String(entregaLab(r, lab)).slice(0, 10) === dataEnt && amostraPresente(r, sub))
-        .map(r => {
+    // Monta os GRUPOS da rastreabilidade: um por (data de entrega × tipo de amostra)
+    // que tenha amostra no período. subKeys = tipos escolhidos; de/ate = AAAA-MM-DD
+    // (vazios = sem limite).
+    function coletarGruposRastreab(subKeys, de, ate) {
+      const subOrder = Object.fromEntries(SUBTIPOS.map((s, i) => [s.key, i]));
+      const grupos = [];
+      for (const key of subKeys) {
+        const sub = SUB_BY_KEY[key]; if (!sub) continue;
+        const lab = labDoSubtipo(sub.key);
+        const porData = new Map();
+        for (const r of allSeals) {
+          if (!amostraPresente(r, sub)) continue;
+          const d = String(entregaLab(r, lab) || "").slice(0, 10);
+          if (!d) continue;                       // sem data de entrega não entra
+          if (de && d < de) continue;
+          if (ate && d > ate) continue;
+          if (!porData.has(d)) porData.set(d, []);
           const t = tsParts(r.local_timestamp);
-          return {
+          porData.get(d).push({
             data: t.data, key: t.key, ponto: pontoDe(r),
             etiqueta: sub.kind === "lacre" ? String((r.lacres || {})[sub.key]).trim() : "-",
             local: r.local_entrega || LAB_NOME[lab],
-          };
-        })
-        .sort((a, b) => (a.key + a.ponto).localeCompare(b.key + b.ponto));
-      if (!linhas.length) return 0;
+          });
+        }
+        for (const [d, linhas] of porData) {
+          linhas.sort((a, b) => (a.key + a.ponto).localeCompare(b.key + b.ponto));
+          grupos.push({ sub, lab, dataEnt: d, linhas });
+        }
+      }
+      // ordem: data de entrega -> laboratório -> ordem do subtipo
+      grupos.sort((a, b) => a.dataEnt.localeCompare(b.dataEnt) || a.lab.localeCompare(b.lab) ||
+        (subOrder[a.sub.key] - subOrder[b.sub.key]));
+      return grupos;
+    }
 
+    // Gera UM único PDF com uma folha oficial por grupo (cada grupo pode ocupar
+    // mais de uma página se tiver muitas amostras).
+    async function gerarRastreabLote(grupos) {
+      if (!grupos.length) return { folhas: 0, amostras: 0 };
       const C = RASTREAB_COORDS, perPage = C.rows.length;
-      const bytes = await fetchFichaPDF("assets/fichas/rastreabilidade.pdf");
-      const pdfDoc = await PDFLib.PDFDocument.load(bytes);
-      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-      const nPages = Math.max(1, Math.ceil(linhas.length / perPage));
-      // páginas extras (cópias do template em branco) criadas ANTES de desenhar
-      for (let i = 1; i < nPages; i++) { const [pp] = await pdfDoc.copyPages(pdfDoc, [0]); pdfDoc.addPage(pp); }
+      const tplBytes = await fetchFichaPDF("assets/fichas/rastreabilidade.pdf");
+      const tpl = await PDFLib.PDFDocument.load(tplBytes);
+      const out = await PDFLib.PDFDocument.create();
+      const font = await out.embedFont(PDFLib.StandardFonts.Helvetica);
       const azul = PDFLib.rgb(0, 0, 0.6);
-      const local = (linhas.find(l => l.local) || {}).local || "";
-      const pages = pdfDoc.getPages();
       const draw = (page, xy, t, size = 10) => {
         if (t == null || t === "" || !xy) return;
         page.drawText(String(t), { x: xy[0], y: xy[1], size, font, color: azul });
       };
-      for (let pi = 0; pi < nPages; pi++) {
-        const page = pages[pi];
-        draw(page, C.header.data_entrega, brDate(dataEnt));
-        draw(page, C.header.amostra, sub.nome);
-        draw(page, C.header.local, local);
-        draw(page, C.header.quantidade, String(linhas.length), 11);
-        linhas.slice(pi * perPage, (pi + 1) * perPage).forEach((l, idx) => {
-          const y = C.rows[idx];
-          draw(page, [C.cols.data, y], l.data, 9);
-          draw(page, [C.cols.ponto, y], l.ponto, 9);
-          draw(page, [C.cols.etiqueta, y], l.etiqueta, 9);
-        });
+      let folhas = 0, amostras = 0;
+      for (const g of grupos) {
+        const nPages = Math.max(1, Math.ceil(g.linhas.length / perPage));
+        const local = (g.linhas.find(l => l.local) || {}).local || "";
+        for (let pi = 0; pi < nPages; pi++) {
+          const [page] = await out.copyPages(tpl, [0]);
+          out.addPage(page);
+          draw(page, C.header.data_entrega, brDate(g.dataEnt));
+          draw(page, C.header.amostra, g.sub.nome);
+          draw(page, C.header.local, local);
+          draw(page, C.header.quantidade, String(g.linhas.length), 11);
+          g.linhas.slice(pi * perPage, (pi + 1) * perPage).forEach((l, idx) => {
+            const y = C.rows[idx];
+            draw(page, [C.cols.data, y], l.data, 9);
+            draw(page, [C.cols.ponto, y], l.ponto, 9);
+            draw(page, [C.cols.etiqueta, y], l.etiqueta, 9);
+          });
+          folhas++;
+        }
+        amostras += g.linhas.length;
       }
-      const out = await pdfDoc.save();
-      const url = URL.createObjectURL(new Blob([out], { type: "application/pdf" }));
+      const bytes = await out.save();
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 15 * 60 * 1000);
-      return linhas.length;
+      return { folhas, amostras };
     }
 
     $("fkGerar").addEventListener("click", async () => {
@@ -2306,26 +2329,35 @@
       const prev = $("fichaPreview");
       if (!tipo) { alert("Selecione a ficha."); return; }
       if (tipo === "rastreabilidade") {
-        const subKey = $("fkPonto").value, dataEnt = $("fkData").value;
-        if (!subKey || !dataEnt) {
+        const amostra = $("fkPonto").value;
+        const de = $("fkDe").value, ate = $("fkAte").value;
+        $("fkPrint").classList.add("hidden");
+        if (!amostra) {
           prev.className = "vazio";
-          prev.textContent = "Selecione a amostra e a data de entrega.";
-          $("fkPrint").classList.add("hidden");
+          prev.textContent = "Selecione a amostra (ou “Todas as amostras”).";
           return;
         }
+        if (de && ate && ate < de) {
+          prev.className = "vazio";
+          prev.textContent = "A data “Até” é anterior à “De”.";
+          return;
+        }
+        const subKeys = amostra === "__all__" ? SUBTIPOS.map(s => s.key) : [amostra];
+        const grupos = coletarGruposRastreab(subKeys, de, ate);
+        if (!grupos.length) {
+          prev.className = "vazio";
+          prev.textContent = "Nenhuma amostra entregue nesse filtro.";
+          return;
+        }
+        const totFolhas = grupos.reduce((a, g) => a + Math.max(1, Math.ceil(g.linhas.length / RASTREAB_COORDS.rows.length)), 0);
+        const totAmostras = grupos.reduce((a, g) => a + g.linhas.length, 0);
         prev.className = "vazio";
-        prev.textContent = "Gerando a ficha oficial em PDF…";
-        $("fkPrint").classList.add("hidden");
+        prev.textContent = `Gerando ${totFolhas} folha(s) · ${grupos.length} remessa(s) · ${totAmostras} amostra(s)…`;
         try {
-          const n = await gerarRastreabPDF(subKey, dataEnt);
-          if (n > 0) {
-            prev.innerHTML = `✅ Rastreabilidade gerada (${n} amostra(s)) — abriu em nova aba para ` +
-              "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
-              "bloquear o pop-up, permita-o para este site.</span>";
-          } else {
-            prev.className = "vazio";
-            prev.textContent = "Nenhuma amostra desse tipo entregue nessa data.";
-          }
+          const { folhas, amostras } = await gerarRastreabLote(grupos);
+          prev.innerHTML = `✅ Rastreabilidade gerada (${folhas} folha(s), ${amostras} amostra(s)) — abriu em nova aba para ` +
+            "imprimir ou salvar em PDF.<br><span class='hint-inline'>Se o navegador " +
+            "bloquear o pop-up, permita-o para este site.</span>";
         } catch (e) {
           prev.className = "vazio";
           prev.textContent = "Erro ao gerar a ficha: " + (e.message || e);
