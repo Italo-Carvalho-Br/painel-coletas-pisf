@@ -875,6 +875,8 @@
       return datas.every(chegou) ? "verde" : "laranja";
     }
     const SIT_TITULO = { verde: "Entregue", laranja: "Datas informadas — ainda não entregue", vermelho: "Sem data de entrega" };
+    // Ordem de exibição por status na aba Fichas: agendada -> sem data -> entregue.
+    const SIT_ORDEM = { laranja: 0, vermelho: 1, verde: 2 };
     const dotEntrega = (r) => { const s = statusEntrega(r); return `<td><span class="sit-dot ${s}" title="${SIT_TITULO[s]}"></span></td>`; };
 
     function renderSeals() {
@@ -1937,7 +1939,12 @@
             entrega: temEntrega ? entregaLab(r, LAB_FICHA[tipo]) : "" };
         });
       }
-      linhas.sort((a, b) => (a.ponto + (a.dataKey || "")).localeCompare(b.ponto + (b.dataKey || "")));
+      linhas.sort((a, b) => {
+        // Fichas com entrega: agrupa por status (agendada -> sem data -> entregue).
+        if (a.status && b.status && a.status !== b.status)
+          return SIT_ORDEM[a.status] - SIT_ORDEM[b.status];
+        return (a.ponto + (a.dataKey || "")).localeCompare(b.ponto + (b.dataKey || ""));
+      });
       const nome = $("fkTipo").selectedOptions[0] ? $("fkTipo").selectedOptions[0].textContent : tipo;
       if (!linhas.length) {
         box.className = "card resumo";
