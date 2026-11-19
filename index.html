@@ -824,10 +824,20 @@
       });
     }
 
-    const lacreVal = (r, k) => (r.lacres && r.lacres[k] != null) ? r.lacres[k] : "";
+    // Convenção do técnico: número de lacre "-", "0" (ou vazio) = amostra NÃO
+    // coletada; item Sim/Não marcado como "Não" = idem. Nesses casos o sistema
+    // (tabela de Lacres, Excel, fichas oficiais e resumo) exibe "Sem Amostras".
+    // A mesma regra governa amostraPresente() — mantenha as duas em sincronia.
+    const SEM_AMOSTRA_LACRE = (v) => {
+      const s = (v == null ? "" : String(v)).trim();
+      return s === "" || s === "0" || /^[-–—]+$/.test(s);
+    };
+    const SEM_AMOSTRA_LABEL = "Sem Amostras";
+    const lacreVal = (r, k) =>
+      SEM_AMOSTRA_LACRE((r.lacres || {})[k]) ? SEM_AMOSTRA_LABEL : String((r.lacres || {})[k]).trim();
     const itemVal = (r, k) => {
       const v = r.itens && r.itens[k];
-      return v === true ? "Sim" : (v === false ? "Não" : "");
+      return v === true ? "Sim" : (v === false ? SEM_AMOSTRA_LABEL : "");
     };
     const sealObs = (r) => r.observacoes || "";
 
@@ -1822,12 +1832,11 @@
       { key: "levantamento_floristico", kind: "item", nome: "Levantamento florístico" },
       { key: "zooplancton", kind: "item", nome: "Zooplâncton" },
     ];
-    // Amostra existe? (valor só "0"/vazio/"Não" = não há amostra)
+    // Amostra existe? Número de lacre "-", "0" ou vazio, ou item "Não" = não há
+    // amostra (mesma convenção de SEM_AMOSTRA_LACRE / lacreVal / itemVal).
     function amostraPresente(r, sub) {
       if (sub.kind === "lacre") {
-        const v = (r.lacres || {})[sub.key];
-        const s = v == null ? "" : String(v).trim();
-        return s !== "" && s !== "0";
+        return !SEM_AMOSTRA_LACRE((r.lacres || {})[sub.key]);
       }
       const v = (r.itens || {})[sub.key];
       return v === true || v === "Sim" || v === 1 || v === "1";
